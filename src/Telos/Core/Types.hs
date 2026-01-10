@@ -21,6 +21,7 @@ import           Data.Aeson   ( (.:)
                               , withObject
                               , withText
                               )
+import           Data.Maybe   ( fromMaybe )
 import           Data.Text    ( Text )
 
 import           GHC.Generics ( Generic )
@@ -107,7 +108,7 @@ instance FromJSON AssistantMessage where
   parseJSON = withObject "AssistantMessage" $ \o -> do
     amContent' <- o .:? "content"
     amToolCalls' <- o .:? "tool_calls"
-    pure AssistantMessage { amContent = amContent', amToolCalls = maybe [] id amToolCalls' }
+    pure AssistantMessage { amContent = amContent', amToolCalls = fromMaybe [] amToolCalls' }
 
 data Message
   = UserMessage { umContent :: Text }

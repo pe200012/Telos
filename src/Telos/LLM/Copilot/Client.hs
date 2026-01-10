@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -89,18 +88,16 @@ instance ToJSON ChatRequest where
 
 -- | Chat completion response
 data ChatResponse
-  = ChatResponse
-  { chId :: Text
-  , chObject :: Maybe Text  -- Optional, not all providers return this
-  , chCreated :: Maybe Int  -- Optional
-  , chModel :: Text
-  , chChoices :: [Choice]
-  }
-  deriving stock (Show, Generic)
+  = ChatResponse { chId      :: Text
+                 , chObject  :: Maybe Text  -- Optional, not all providers return this
+                 , chCreated :: Maybe Int  -- Optional
+                 , chModel   :: Text
+                 , chChoices :: [ Choice ]
+                 }
+  deriving stock ( Show, Generic )
 
 instance FromJSON ChatResponse where
-  parseJSON = withObject "ChatResponse" $ \o -> ChatResponse 
-    <$> o .: "id"
+  parseJSON = withObject "ChatResponse" $ \o -> ChatResponse <$> o .: "id"
     <*> o .:? "object"
     <*> o .:? "created"
     <*> o .: "model"
@@ -243,7 +240,7 @@ parseSSESource source = source .| linesC .| filterC isDataLine .| mapC extractDa
   where
     isDataLine bs = "data: " `BS.isPrefixOf` bs
 
-    extractData bs = BS.drop 6 bs  -- Remove "data: " prefix
+    extractData   = BS.drop 6  -- Remove "data: " prefix
 
 -- | Split input into lines
 linesC :: ConduitT BS.ByteString BS.ByteString IO ()
@@ -252,7 +249,7 @@ linesC = awaitForever $ \chunk -> do
   let combined         = maybe chunk (<> chunk) leftover
       ( lines', rest ) = splitLines combined
   mapM_ yield lines'
-  when (not $ BS.null rest) $ put rest
+  unless (BS.null rest) $ put rest
   where
     get           = pure Nothing  -- Simplified; in production use StateT
 
@@ -283,7 +280,7 @@ instance FromJSON ModelInfo where
     = withObject "ModelInfo" $ \o -> ModelInfo <$> o .: "id" <*> o .:? "name" <*> o .:? "version"
 
 -- | Models list response
-data ModelsResponse = ModelsResponse { mrData :: [ ModelInfo ] }
+newtype ModelsResponse = ModelsResponse { mrData :: [ ModelInfo ] }
   deriving stock ( Show, Generic )
 
 instance FromJSON ModelsResponse where

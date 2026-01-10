@@ -59,7 +59,7 @@ data ClientCapabilities
   = ClientCapabilities { ccRoots :: Maybe RootsCapability, ccSampling :: Maybe SamplingCapability }
   deriving stock ( Eq, Show, Generic )
 
-data RootsCapability = RootsCapability { rcListChanged :: Maybe Bool }
+newtype RootsCapability = RootsCapability { rcListChanged :: Maybe Bool }
   deriving stock ( Eq, Show, Generic )
 
 data SamplingCapability = SamplingCapability
@@ -85,14 +85,14 @@ data ServerCapabilities
                        }
   deriving stock ( Eq, Show, Generic )
 
-data PromptsCapability = PromptsCapability { pcListChanged :: Maybe Bool }
+newtype PromptsCapability = PromptsCapability { pcListChanged :: Maybe Bool }
   deriving stock ( Eq, Show, Generic )
 
 data ResourcesCapability
   = ResourcesCapability { rscSubscribe :: Maybe Bool, rscListChanged :: Maybe Bool }
   deriving stock ( Eq, Show, Generic )
 
-data ToolsCapability = ToolsCapability { tcListChanged :: Maybe Bool }
+newtype ToolsCapability = ToolsCapability { tcListChanged :: Maybe Bool }
   deriving stock ( Eq, Show, Generic )
 
 instance FromJSON ServerCapabilities where
@@ -159,8 +159,7 @@ data CallToolParams = CallToolParams { ctpName :: Text, ctpArguments :: Maybe Va
 
 instance ToJSON CallToolParams where
   toJSON ctp
-    = object
-    $ [ "name" .= ctpName ctp ] ++ maybe [] (\a -> [ "arguments" .= a ]) (ctpArguments ctp)
+    = object $ ("name" .= ctpName ctp) : maybe [] (\a -> [ "arguments" .= a ]) (ctpArguments ctp)
 
 data ContentPart
   = TextPart Text
@@ -203,7 +202,7 @@ instance FromJSON ListResourcesResult where
   parseJSON = withObject "ListResourcesResult" $ \o
     -> ListResourcesResult <$> o .: "resources" <*> o .:? "nextCursor"
 
-data ReadResourceParams = ReadResourceParams { rrpUri :: Text }
+newtype ReadResourceParams = ReadResourceParams { rrpUri :: Text }
   deriving stock ( Eq, Show, Generic )
 
 instance ToJSON ReadResourceParams where
@@ -218,7 +217,7 @@ instance FromJSON ResourceContents where
   parseJSON = withObject "ResourceContents" $ \o
     -> ResourceContents <$> o .: "uri" <*> o .:? "mimeType" <*> o .:? "text" <*> o .:? "blob"
 
-data ReadResourceResult = ReadResourceResult { rrrContents :: [ ResourceContents ] }
+newtype ReadResourceResult = ReadResourceResult { rrrContents :: [ ResourceContents ] }
   deriving stock ( Eq, Show, Generic )
 
 instance FromJSON ReadResourceResult where

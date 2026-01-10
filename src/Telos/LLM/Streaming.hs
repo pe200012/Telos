@@ -89,7 +89,7 @@ processToolCallChunk collector chunk = do
   -- Update builder with new data
   let newId = firstJust (tccId chunk) (tcbId current)
   let newName = firstJust (tccFunction chunk >>= fcName) (tcbName current)
-  let newArgs = tcbArguments current <> maybe "" id (tccFunction chunk >>= fcArguments)
+  let newArgs = tcbArguments current <> Data.Maybe.fromMaybe "" (tccFunction chunk >>= fcArguments)
 
   let updated = ToolCallBuilder newId newName newArgs
   writeIORef (scToolCalls collector) (Map.insert idx updated currentMap)

@@ -1,6 +1,7 @@
 module Telos.MCP.Interpreter ( runMCPWithManager ) where
 
 import           Data.Aeson              ( Value )
+import           Data.Maybe              ( fromMaybe )
 import           Data.Text               ( Text )
 
 import           Polysemy                ( Embed, Member, Sem, embed, interpret )
@@ -40,7 +41,7 @@ runMCPWithManager mgr = interpret $ \case
 convertToolResult :: Types.CallToolResult -> ToolResult
 convertToolResult ctr
   = ToolResult { trContent = map convertContentPart (Types.ctrContent ctr)
-               , trIsError = maybe False id (Types.ctrIsError ctr)
+               , trIsError = fromMaybe False (Types.ctrIsError ctr)
                }
 
 convertContentPart :: Types.ContentPart -> ContentItem

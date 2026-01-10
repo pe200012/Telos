@@ -13,6 +13,7 @@ module Telos.MCP.ServerManager
 
 import           Control.Concurrent.STM
 import           Control.Exception      ( SomeException, try )
+import           Control.Monad          ( forM_ )
 
 import           Data.Aeson             ( Value )
 import           Data.Map.Strict        ( Map )
@@ -55,9 +56,7 @@ removeServer mgr name = do
     writeTVar (smConnections mgr) (Map.delete name conns)
     pure mConn
 
-  case mConn of
-    Nothing   -> pure ()
-    Just conn -> disconnectFromServer conn
+  forM_ mConn disconnectFromServer
 
 getConnection :: ServerManager -> Text -> IO (Maybe MCPConnection)
 getConnection mgr name = atomically $ do

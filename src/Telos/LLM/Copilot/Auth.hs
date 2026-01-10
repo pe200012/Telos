@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -313,7 +312,7 @@ getCopilotToken auth oauthToken = do
 -- | Ensure we have a valid token, refreshing if needed
 ensureValidToken :: CopilotAuth -> IO (Either AuthError CopilotToken)
 ensureValidToken auth = do
-  state <- atomically $ readTVar (caTokenState auth)
+  state <- readTVarIO (caTokenState auth)
   case state of
     NoToken -> do
       -- Try loading from disk first
@@ -327,7 +326,7 @@ ensureValidToken auth = do
       if diffUTCTime (ctExpiresAt token) now < 300  -- Refresh if < 5 min left
         then do
           -- Try to refresh using stored OAuth token
-          mOAuth <- atomically $ readTVar (caOAuthToken auth)
+          mOAuth <- readTVarIO (caOAuthToken auth)
           case mOAuth of
             Nothing       -> pure $ Left AuthExpired
             Just oauthTok -> do
@@ -343,7 +342,7 @@ ensureValidToken auth = do
 -- | Get current token if available
 getToken :: CopilotAuth -> IO (Maybe CopilotToken)
 getToken auth = do
-  state <- atomically $ readTVar (caTokenState auth)
+  state <- readTVarIO (caTokenState auth)
   case state of
     Authenticated token -> pure $ Just token
     _ -> pure Nothing
