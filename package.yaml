@@ -21,6 +21,7 @@ description:         Please see the README on GitHub at <https://github.com/pe20
 
 dependencies:
 - base >= 4.7 && < 5
+- relude
 # Text and ByteString
 - text
 - bytestring
@@ -93,6 +94,10 @@ ghc-options:
 
 library:
   source-dirs: src
+  mixins:
+    - base hiding (Prelude)
+    - relude (Relude as Prelude)
+    - relude
 
 executables:
   Telos-exe:
@@ -102,6 +107,18 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    dependencies:
+    - Telos
+
+  test-copilot:
+    main:                TestCopilot.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -main-is
+    - TestCopilot
     dependencies:
     - Telos
 

@@ -89,7 +89,7 @@ instance FromJSON Tool where
            , toolInputSchema = toolInputSchema'
            }
 
-data AssistantMessage = AssistantMessage' { amContent :: Maybe Text, amToolCalls :: [ ToolCall ] }
+data AssistantMessage = AssistantMessage { amContent :: Maybe Text, amToolCalls :: [ ToolCall ] }
   deriving stock ( Eq, Show, Generic )
 
 instance ToJSON AssistantMessage where
@@ -107,7 +107,7 @@ instance FromJSON AssistantMessage where
   parseJSON = withObject "AssistantMessage" $ \o -> do
     amContent' <- o .:? "content"
     amToolCalls' <- o .:? "tool_calls"
-    pure AssistantMessage' { amContent = amContent', amToolCalls = maybe [] id amToolCalls' }
+    pure AssistantMessage { amContent = amContent', amToolCalls = maybe [] id amToolCalls' }
 
 data Message
   = UserMessage { umContent :: Text }
