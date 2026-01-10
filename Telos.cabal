@@ -25,15 +25,25 @@ source-repository head
 
 library
   exposed-modules:
+      Telos.Agent.Config
+      Telos.Agent.Context
+      Telos.Agent.Interrupt
+      Telos.Agent.Loop
+      Telos.Agent.Streaming
+      Telos.App
       Telos.Core.Error
       Telos.Core.Types
       Telos.Effect.LLM
       Telos.Effect.Logger
+      Telos.Effect.Logger.IO
       Telos.Effect.MCP
       Telos.Effect.Process
+      Telos.Effect.StreamOutput
+      Telos.Effect.StreamOutput.IO
       Telos.LLM.Copilot.Auth
       Telos.LLM.Copilot.Client
       Telos.LLM.Copilot.Interpreter
+      Telos.LLM.Interpreter
       Telos.LLM.Streaming
       Telos.MCP.Client
       Telos.MCP.Interpreter
@@ -94,6 +104,7 @@ library
     , text
     , time
     , transformers
+    , unix
     , unliftio
     , unordered-containers
     , vector
@@ -102,6 +113,7 @@ library
 executable Telos-exe
   main-is: Main.hs
   other-modules:
+      TestAgent
       TestCopilot
       Paths_Telos
   autogen-modules:
@@ -156,6 +168,71 @@ executable Telos-exe
     , text
     , time
     , transformers
+    , unix
+    , unliftio
+    , unordered-containers
+    , vector
+  default-language: Haskell2010
+
+executable test-agent
+  main-is: TestAgent.hs
+  other-modules:
+      Main
+      TestCopilot
+      Paths_Telos
+  autogen-modules:
+      Paths_Telos
+  hs-source-dirs:
+      app
+  default-extensions:
+      BangPatterns
+      ConstraintKinds
+      DataKinds
+      DeriveAnyClass
+      DeriveFunctor
+      DeriveGeneric
+      DerivingStrategies
+      FlexibleContexts
+      FlexibleInstances
+      GADTs
+      GeneralizedNewtypeDeriving
+      LambdaCase
+      MultiParamTypeClasses
+      OverloadedStrings
+      PolyKinds
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TemplateHaskell
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -main-is TestAgent
+  build-depends:
+      Telos
+    , aeson >=2.0
+    , async >=2.2
+    , base >=4.7 && <5
+    , bytestring
+    , conduit >=1.3
+    , conduit-extra
+    , containers
+    , directory
+    , exceptions
+    , filepath
+    , http-client >=0.7
+    , http-client-tls
+    , http-conduit
+    , http-types
+    , mtl
+    , polysemy >=1.9
+    , process >=1.6
+    , relude
+    , stm >=2.5
+    , text
+    , time
+    , transformers
+    , unix
     , unliftio
     , unordered-containers
     , vector
@@ -165,6 +242,7 @@ executable test-copilot
   main-is: TestCopilot.hs
   other-modules:
       Main
+      TestAgent
       Paths_Telos
   autogen-modules:
       Paths_Telos
@@ -218,6 +296,7 @@ executable test-copilot
     , text
     , time
     , transformers
+    , unix
     , unliftio
     , unordered-containers
     , vector
@@ -227,6 +306,12 @@ test-suite Telos-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Telos.Agent.ConfigSpec
+      Telos.Agent.ContextSpec
+      Telos.Agent.InterruptSpec
+      Telos.Agent.LoopSpec
+      Telos.Agent.StreamingSpec
+      Telos.Effect.StreamOutputSpec
       Telos.MCP.ClientSpec
       Telos.MCP.IntegrationSpec
       Telos.MCP.ServerManagerSpec
@@ -288,6 +373,7 @@ test-suite Telos-test
     , text
     , time
     , transformers
+    , unix
     , unliftio
     , unordered-containers
     , vector
