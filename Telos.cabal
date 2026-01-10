@@ -31,6 +31,12 @@ library
       Telos.Effect.Logger
       Telos.Effect.MCP
       Telos.Effect.Process
+      Telos.MCP.Client
+      Telos.MCP.Interpreter
+      Telos.MCP.JsonRpc
+      Telos.MCP.ServerManager
+      Telos.MCP.Transport.StdIO
+      Telos.MCP.Types
   other-modules:
       Paths_Telos
   autogen-modules:
@@ -152,6 +158,10 @@ test-suite Telos-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Telos.MCP.ClientSpec
+      Telos.MCP.IntegrationSpec
+      Telos.MCP.ServerManagerSpec
+      Telos.MCP.Transport.StdIOSpec
       Paths_Telos
   autogen-modules:
       Paths_Telos
@@ -182,8 +192,9 @@ test-suite Telos-test
       TypeOperators
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      Telos
-    , aeson >=2.0
+      QuickCheck
+    , Telos
+    , aeson
     , async >=2.2
     , base >=4.7 && <5
     , bytestring
@@ -193,6 +204,8 @@ test-suite Telos-test
     , directory
     , exceptions
     , filepath
+    , hspec >=2.10
+    , hspec-discover
     , http-client >=0.7
     , http-client-tls
     , http-conduit
@@ -200,6 +213,7 @@ test-suite Telos-test
     , mtl
     , polysemy >=1.9
     , process >=1.6
+    , quickcheck-instances
     , stm >=2.5
     , text
     , time

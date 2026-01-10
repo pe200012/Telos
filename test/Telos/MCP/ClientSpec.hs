@@ -1,0 +1,41 @@
+module Telos.MCP.ClientSpec (spec) where
+
+import Data.Maybe (isNothing)
+import Test.Hspec
+
+import Telos.MCP.Client
+import Telos.MCP.Types
+
+spec :: Spec
+spec = do
+  describe "MCPConnection" $ do
+    describe "connectToServer" $ do
+      it "fails gracefully for non-existent command" $ do
+        let config = ServerConfig
+              { scName = "test"
+              , scCommand = "/nonexistent/mcp/server"
+              , scArgs = []
+              , scWorkDir = Nothing
+              , scEnv = Nothing
+              }
+        result <- connectToServer config
+        case result of
+          Left _ -> pure ()
+          Right conn -> do
+            disconnectFromServer conn
+            expectationFailure "Should have failed for non-existent command"
+
+      it "fails gracefully when server doesn't speak MCP protocol" $ do
+        let config = ServerConfig
+              { scName = "test-cat"
+              , scCommand = "cat"
+              , scArgs = []
+              , scWorkDir = Nothing
+              , scEnv = Nothing
+              }
+        result <- connectToServer config
+        case result of
+          Left _ -> pure ()  -- Expected: cat doesn't speak MCP
+          Right conn -> do
+            disconnectFromServer conn
+            expectationFailure "Should have failed - cat doesn't speak MCP"
