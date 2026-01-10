@@ -6,6 +6,7 @@
 module Telos.App ( AppConfig(..), runApp, runAgentOnce, runAgentOnceStreaming ) where
 
 import           Control.Exception            ( bracket )
+
 import qualified Data.Text                    as T
 import qualified Data.Text.IO                 as TIO
 
@@ -18,12 +19,12 @@ import           Polysemy                     ( runM )
 import           Polysemy.Error               ( runError )
 
 import           Telos.Agent.Config           ( AgentConfig
-                                              , acStreamingEnabled
                                               , acMCPServers
-                                              , mscName
-                                              , mscCommand
+                                              , acStreamingEnabled
                                               , mscArgs
+                                              , mscCommand
                                               , mscEnv
+                                              , mscName
                                               )
 import           Telos.Agent.Context          ( AgentContext
                                               , ctxConfig
@@ -46,15 +47,13 @@ import           Telos.LLM.Copilot.Client     ( CopilotClient
 import           Telos.LLM.Interpreter        ( runLLMWithCopilot )
 import           Telos.MCP.Interpreter        ( runMCPWithManager )
 import           Telos.MCP.ServerManager      ( ServerManager
-                                              , twsTool
                                               , addServer
                                               , aggregateTools
                                               , newServerManager
                                               , shutdownAll
+                                              , twsTool
                                               )
-import           Telos.MCP.Types              ( makeServerConfig
-                                              , scEnv
-                                              )
+import           Telos.MCP.Types              ( makeServerConfig, scEnv )
 
 data AppConfig = AppConfig { appAgentConfig :: AgentConfig, appCopilotConfig :: CopilotConfig }
 
@@ -85,7 +84,10 @@ initializeTools ctx manager = do
         env       = serverCfg ^. mscEnv
         srvConfig
           = makeServerConfig name cmd args
-          & scEnv .~ (if null env then Nothing else Just env)
+          & scEnv
+          .~ (if null env
+                then Nothing
+                else Just env)
     TIO.putStrLn $ "Connecting to MCP server: " <> name
     result <- addServer manager srvConfig
     case result of

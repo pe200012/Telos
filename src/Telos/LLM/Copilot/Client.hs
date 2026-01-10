@@ -64,7 +64,7 @@ import qualified Data.ByteString.Lazy        as BL
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as TE
 
-import           Lens.Micro                  ( Lens', (^.), non )
+import           Lens.Micro                  ( (^.), Lens', non )
 import           Lens.Micro.TH               ( makeLenses )
 
 import           Network.HTTP.Client
@@ -210,7 +210,7 @@ copilotHeaders token
   where
     -- Temporary accessor until Auth is refactored
     ctToken' :: Lens' CopilotToken Text
-    ctToken' f (CopilotToken t e) = (\t' -> CopilotToken t' e) <$> f t
+    ctToken' f (CopilotToken t e) = (`CopilotToken` e) <$> f t
 
 -- | Build chat request
 buildRequest :: CopilotClient -> CopilotToken -> [ Message ] -> [ Tool ] -> Bool -> Request
@@ -229,7 +229,7 @@ buildRequest client token messages tools stream
         , _crTemperature = Nothing
         }
       body    = encode chatReq
-    in
+    in 
       defaultRequest
       { host           = "api.githubcopilot.com"
       , port           = 443
@@ -303,7 +303,7 @@ linesC = awaitForever $ \chunk -> do
     splitLines bs
       = let
           parts = BS8.split '\n' bs
-        in
+        in 
           case parts of
             []    -> ( [], BS.empty )
             [ x ] -> ( [], x )

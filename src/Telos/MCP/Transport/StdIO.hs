@@ -37,13 +37,13 @@ import           System.Process             ( CreateProcess(..)
 import           Telos.Core.Error           ( MCPError(..) )
 import           Telos.MCP.JsonRpc          ( JsonRpcMessage, decodeMessage )
 
-data StdIOHandle = StdIOHandle
-  { _shProcess :: ProcessHandle
-  , _shStdin   :: Handle
-  , _shStdout  :: Handle
-  , _shStderr  :: Handle
-  , _shLock    :: MVar ()
-  }
+data StdIOHandle
+  = StdIOHandle { _shProcess :: ProcessHandle
+                , _shStdin   :: Handle
+                , _shStdout  :: Handle
+                , _shStderr  :: Handle
+                , _shLock    :: MVar ()
+                }
 
 makeLenses ''StdIOHandle
 
@@ -53,13 +53,13 @@ spawnMCPProcess :: FilePath
                 -> Maybe [ ( String, String ) ]
                 -> IO (Either MCPError StdIOHandle)
 spawnMCPProcess cmd args workDir env' = do
-  let cp = (proc cmd args)
-        { std_in  = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
-        , cwd     = workDir
-        , env     = env'
-        }
+  let cp
+        = (proc cmd args) { std_in  = CreatePipe
+                          , std_out = CreatePipe
+                          , std_err = CreatePipe
+                          , cwd     = workDir
+                          , env     = env'
+                          }
 
   result <- try $ createProcess cp
 
@@ -72,13 +72,14 @@ spawnMCPProcess cmd args workDir env' = do
 
       lock <- newMVar ()
 
-      pure $ Right StdIOHandle
-        { _shProcess = ph
-        , _shStdin   = stdinH
-        , _shStdout  = stdoutH
-        , _shStderr  = stderrH
-        , _shLock    = lock
-        }
+      pure
+        $ Right
+          StdIOHandle { _shProcess = ph
+                      , _shStdin   = stdinH
+                      , _shStdout  = stdoutH
+                      , _shStderr  = stderrH
+                      , _shLock    = lock
+                      }
     Right _ -> pure $ Left $ MCPConnectionFailed "Failed to create process pipes"
 
 sendMessage :: (ToJSON a) => StdIOHandle -> a -> IO (Either MCPError ())

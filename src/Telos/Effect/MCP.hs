@@ -46,55 +46,35 @@ data ContentItem
 
 makeLenses ''ContentItem
 
-data ToolResult = ToolResult
-  { _trContent :: [ ContentItem ]
-  , _trIsError :: Bool
-  }
+data ToolResult = ToolResult { _trContent :: [ ContentItem ], _trIsError :: Bool }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''ToolResult
 
 makeToolResult :: [ ContentItem ] -> ToolResult
-makeToolResult content = ToolResult
-  { _trContent = content
-  , _trIsError = False
-  }
+makeToolResult content = ToolResult { _trContent = content, _trIsError = False }
 
-data Resource = Resource
-  { _resUri         :: Text
-  , _resName        :: Text
-  , _resMimeType    :: Maybe Text
-  , _resDescription :: Maybe Text
-  }
+data Resource
+  = Resource
+  { _resUri :: Text, _resName :: Text, _resMimeType :: Maybe Text, _resDescription :: Maybe Text }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''Resource
 
 makeResource :: Text -> Text -> Resource
-makeResource uri name = Resource
-  { _resUri = uri
-  , _resName = name
-  , _resMimeType = Nothing
-  , _resDescription = Nothing
-  }
+makeResource uri name
+  = Resource { _resUri = uri, _resName = name, _resMimeType = Nothing, _resDescription = Nothing }
 
-data ResourceContent = ResourceContent
-  { _rcUri      :: Text
-  , _rcMimeType :: Maybe Text
-  , _rcText     :: Maybe Text
-  , _rcBlob     :: Maybe Text
-  }
+data ResourceContent
+  = ResourceContent
+  { _rcUri :: Text, _rcMimeType :: Maybe Text, _rcText :: Maybe Text, _rcBlob :: Maybe Text }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''ResourceContent
 
 makeResourceContent :: Text -> ResourceContent
-makeResourceContent uri = ResourceContent
-  { _rcUri = uri
-  , _rcMimeType = Nothing
-  , _rcText = Nothing
-  , _rcBlob = Nothing
-  }
+makeResourceContent uri
+  = ResourceContent { _rcUri = uri, _rcMimeType = Nothing, _rcText = Nothing, _rcBlob = Nothing }
 
 data MCP m a where
   ListTools :: MCP m [ Tool ]

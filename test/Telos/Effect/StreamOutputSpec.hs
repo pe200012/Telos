@@ -1,12 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Telos.Effect.StreamOutputSpec (spec) where
+module Telos.Effect.StreamOutputSpec ( spec ) where
 
-import Test.Hspec
-import Polysemy
+import           Polysemy
 
-import Telos.Effect.StreamOutput
-import Telos.Effect.StreamOutput.IO (runStreamOutputSilent)
+import           Telos.Effect.StreamOutput
+import           Telos.Effect.StreamOutput.IO ( runStreamOutputSilent )
+
+import           Test.Hspec
 
 spec :: Spec
 spec = do
@@ -28,43 +29,44 @@ spec = do
         result <- runStreamOutputCollect $ do
           outputChunk "Hello"
           outputChunk " World"
-        result `shouldBe` ["Hello", " World"]
-      
+        result `shouldBe` [ "Hello", " World" ]
+
       it "collects tool start events" $ do
         result <- runStreamOutputCollect $ do
           outputToolStart "my_tool"
-        result `shouldBe` ["[TOOL_START:my_tool]"]
-      
+        result `shouldBe` [ "[TOOL_START:my_tool]" ]
+
       it "collects tool end events" $ do
         result <- runStreamOutputCollect $ do
           outputToolEnd "my_tool"
-        result `shouldBe` ["[TOOL_END:my_tool]"]
-      
+        result `shouldBe` [ "[TOOL_END:my_tool]" ]
+
       it "collects newlines" $ do
         result <- runStreamOutputCollect $ do
           outputChunk "line1"
           outputNewline
           outputChunk "line2"
-        result `shouldBe` ["line1", "[NEWLINE]", "line2"]
-      
+        result `shouldBe` [ "line1", "[NEWLINE]", "line2" ]
+
       it "ignores flush" $ do
         result <- runStreamOutputCollect $ do
           outputChunk "test"
           flushOutput
-        result `shouldBe` ["test"]
+        result `shouldBe` [ "test" ]
 
 -- | Test interpreter that collects output as a list of Text
-runStreamOutputCollect :: Sem '[StreamOutput, Embed IO] a -> IO [Text]
+runStreamOutputCollect :: Sem '[ StreamOutput, Embed IO ] a -> IO [ Text ]
 runStreamOutputCollect action = do
   ref <- newIORef []
   _ <- runM $ runStreamOutputToRef ref action
   reverse <$> readIORef ref
 
 -- | Interpreter that collects output to an IORef
-runStreamOutputToRef :: Member (Embed IO) r => IORef [Text] -> Sem (StreamOutput ': r) a -> Sem r a
+runStreamOutputToRef
+  :: Member (Embed IO) r => IORef [ Text ] -> Sem (StreamOutput ': r) a -> Sem r a
 runStreamOutputToRef ref = interpret $ \case
-  OutputChunk text -> embed @IO $ modifyIORef' ref (text :)
+  OutputChunk text     -> embed @IO $ modifyIORef' ref (text :)
   OutputToolStart name -> embed @IO $ modifyIORef' ref (("[TOOL_START:" <> name <> "]") :)
-  OutputToolEnd name -> embed @IO $ modifyIORef' ref (("[TOOL_END:" <> name <> "]") :)
-  OutputNewline -> embed @IO $ modifyIORef' ref ("[NEWLINE]" :)
-  FlushOutput -> pure ()
+  OutputToolEnd name   -> embed @IO $ modifyIORef' ref (("[TOOL_END:" <> name <> "]") :)
+  OutputNewline        -> embed @IO $ modifyIORef' ref ("[NEWLINE]" :)
+  FlushOutput          -> pure ()

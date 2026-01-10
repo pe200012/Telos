@@ -22,12 +22,9 @@ import qualified System.Process   as P
 
 import           Telos.Core.Error ( ProcessError )
 
-data ProcessHandle = ProcessHandle
-  { _phProcess :: P.ProcessHandle
-  , _phStdin   :: Handle
-  , _phStdout  :: Handle
-  , _phStderr  :: Handle
-  }
+data ProcessHandle
+  = ProcessHandle
+  { _phProcess :: P.ProcessHandle, _phStdin :: Handle, _phStdout :: Handle, _phStderr :: Handle }
 
 makeLenses ''ProcessHandle
 

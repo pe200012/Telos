@@ -34,18 +34,12 @@ newtype ServerManager = ServerManager { _smConnections :: TVar (Map Text MCPConn
 
 makeLenses ''ServerManager
 
-data ToolWithSource = ToolWithSource
-  { _twsTool       :: Tool
-  , _twsServerName :: Text
-  }
+data ToolWithSource = ToolWithSource { _twsTool :: Tool, _twsServerName :: Text }
 
 makeLenses ''ToolWithSource
 
 makeToolWithSource :: Tool -> Text -> ToolWithSource
-makeToolWithSource tool srvName = ToolWithSource
-  { _twsTool = tool
-  , _twsServerName = srvName
-  }
+makeToolWithSource tool srvName = ToolWithSource { _twsTool = tool, _twsServerName = srvName }
 
 newServerManager :: IO ServerManager
 newServerManager = do
@@ -112,13 +106,13 @@ aggregateTools mgr = do
       result <- listTools conn
       case result of
         Left err  -> pure $ Left err
-        Right ltr -> pure
-          $ Right
-          $ map (\ti -> let
-              tool = makeTool (ti ^. tiName) (ti ^. tiInputSchema)
-                       & toolDescription .~ (ti ^. tiDescription)
-            in makeToolWithSource tool (conn ^. mcName)
-          ) (ltr ^. ltrTools)
+        Right ltr
+          -> pure $ Right $ map (\ti -> let
+                                     tool
+                                       = makeTool (ti ^. tiName) (ti ^. tiInputSchema)
+                                       & toolDescription .~ (ti ^. tiDescription)
+                                   in 
+                                     makeToolWithSource tool (conn ^. mcName)) (ltr ^. ltrTools)
 
     combineResults :: [ Either MCPError [ ToolWithSource ] ] -> Either MCPError [ ToolWithSource ]
     combineResults = fmap concat . sequence

@@ -1,13 +1,16 @@
 module Telos.Agent.ContextSpec ( spec ) where
 
 import           Control.Concurrent.MVar ( isEmptyMVar )
+
 import           Data.Aeson              ( object )
+
 import           Lens.Micro              ( (^.) )
-import           Test.Hspec
 
 import           Telos.Agent.Config      ( defaultAgentConfig )
 import           Telos.Agent.Context
 import           Telos.Core.Types        ( Message(..), makeTool )
+
+import           Test.Hspec
 
 spec :: Spec
 spec = do
@@ -38,7 +41,7 @@ spec = do
         ctx <- newAgentContext defaultAgentConfig
         addMessage ctx (UserMessage "Hello")
         history <- getHistory ctx
-        history `shouldBe` [UserMessage "Hello"]
+        history `shouldBe` [ UserMessage "Hello" ]
 
       it "appends messages in order" $ do
         ctx <- newAgentContext defaultAgentConfig
@@ -46,15 +49,15 @@ spec = do
         addMessage ctx (UserMessage "Second")
         addMessage ctx (UserMessage "Third")
         history <- getHistory ctx
-        history `shouldBe` [UserMessage "First", UserMessage "Second", UserMessage "Third"]
+        history `shouldBe` [ UserMessage "First", UserMessage "Second", UserMessage "Third" ]
 
     describe "setHistory" $ do
       it "replaces entire history" $ do
         ctx <- newAgentContext defaultAgentConfig
         addMessage ctx (UserMessage "Old")
-        setHistory ctx [UserMessage "New1", UserMessage "New2"]
+        setHistory ctx [ UserMessage "New1", UserMessage "New2" ]
         history <- getHistory ctx
-        history `shouldBe` [UserMessage "New1", UserMessage "New2"]
+        history `shouldBe` [ UserMessage "New1", UserMessage "New2" ]
 
     describe "clearHistory" $ do
       it "removes all messages" $ do
@@ -68,18 +71,18 @@ spec = do
       it "registers tools" $ do
         ctx <- newAgentContext defaultAgentConfig
         let testTool = makeTool "test/tool" (object [])
-        registerTools ctx [testTool]
+        registerTools ctx [ testTool ]
         tools <- getTools ctx
-        tools `shouldBe` [testTool]
+        tools `shouldBe` [ testTool ]
 
       it "replaces existing tools" $ do
         ctx <- newAgentContext defaultAgentConfig
         let tool1 = makeTool "tool1" (object [])
             tool2 = makeTool "tool2" (object [])
-        registerTools ctx [tool1]
-        registerTools ctx [tool2]
+        registerTools ctx [ tool1 ]
+        registerTools ctx [ tool2 ]
         tools <- getTools ctx
-        tools `shouldBe` [tool2]
+        tools `shouldBe` [ tool2 ]
 
     describe "iteration count" $ do
       it "incrementIteration increases count" $ do

@@ -3,7 +3,7 @@
 module Telos.Core.Types
   ( Role(..)
   , Message(..)
-  -- Message Prisms
+    -- Message Prisms
   , _UserMessage
   , _AssistantMsg
   , _SystemMessage
@@ -19,7 +19,7 @@ module Telos.Core.Types
   , toolDescription
   , toolInputSchema
   , StreamEvent(ContentDelta, ToolCallStart, ToolCallDelta, Ping)
-  -- StreamEvent Prisms
+    -- StreamEvent Prisms
   , _ContentDelta
   , _ToolCallStart
   , _ToolCallDelta
@@ -30,7 +30,7 @@ module Telos.Core.Types
   , tcdIndex
   , tcdArguments
   , StreamResult(..)
-  -- StreamResult Prisms
+    -- StreamResult Prisms
   , _StreamCompleted
   , _StreamInterrupted
   , _StreamFailed
@@ -61,22 +61,22 @@ module Telos.Core.Types
   , trmIsError
   ) where
 
-import           Data.Aeson          ( (.:)
-                                     , (.:?)
-                                     , (.=)
-                                     , FromJSON(..)
-                                     , ToJSON(..)
-                                     , Value(..)
-                                     , eitherDecode
-                                     , encode
-                                     , object
-                                     , withObject
-                                     , withText
-                                     )
+import           Data.Aeson     ( (.:)
+                                , (.:?)
+                                , (.=)
+                                , FromJSON(..)
+                                , ToJSON(..)
+                                , Value(..)
+                                , eitherDecode
+                                , encode
+                                , object
+                                , withObject
+                                , withText
+                                )
 
-import           Lens.Micro          ( (^.), non )
-import           Lens.Micro.Pro      ( Prism', prism' )
-import           Lens.Micro.TH       ( makeLenses )
+import           Lens.Micro     ( (^.), non )
+import           Lens.Micro.Pro ( Prism', prism' )
+import           Lens.Micro.TH  ( makeLenses )
 
 data Role = User | Assistant | System | ToolRole
   deriving stock ( Eq, Show, Generic )
@@ -96,11 +96,7 @@ instance FromJSON Role where
     "tool"      -> pure ToolRole
     other       -> fail $ "Unknown role: " <> show other
 
-data ToolCall = ToolCall
-  { _tcId        :: Text
-  , _tcName      :: Text
-  , _tcArguments :: Value
-  }
+data ToolCall = ToolCall { _tcId :: Text, _tcName :: Text, _tcArguments :: Value }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''ToolCall
@@ -109,20 +105,17 @@ makeToolCall :: Text -- ^ id
              -> Text -- ^ name
              -> Value -- ^ arguments
              -> ToolCall
-makeToolCall id' name args =
-  ToolCall { _tcId        = id'
-           , _tcName      = name
-           , _tcArguments = args
-           }
+makeToolCall id' name args = ToolCall { _tcId = id', _tcName = name, _tcArguments = args }
 
 instance ToJSON ToolCall where
   toJSON tc
     = object
       [ "id" .= (tc ^. tcId)
       , "type" .= ("function" :: Text)
-      , "function" .= object 
+      , "function"
+        .= object
           [ "name" .= (tc ^. tcName)
-          -- OpenAI requires arguments as a JSON string, not an object
+            -- OpenAI requires arguments as a JSON string, not an object
           , "arguments" .= (decodeUtf8 (encode (tc ^. tcArguments)) :: Text)
           ]
       ]
@@ -138,24 +131,17 @@ instance FromJSON ToolCall where
       String s -> case eitherDecode (encodeUtf8 $ fromStrict s) of
         Left err -> fail $ "Failed to parse tool arguments: " <> err
         Right v  -> pure v
-      v -> pure v  -- Already a Value (object)
+      v        -> pure v  -- Already a Value (object)
     pure ToolCall { _tcId = tcId', _tcName = tcName', _tcArguments = tcArguments' }
 
-data Tool = Tool
-  { _toolName        :: Text
-  , _toolDescription :: Maybe Text
-  , _toolInputSchema :: Value
-  }
+data Tool = Tool { _toolName :: Text, _toolDescription :: Maybe Text, _toolInputSchema :: Value }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''Tool
 
 makeTool :: Text -> Value -> Tool
-makeTool name schema = Tool
-  { _toolName = name
-  , _toolDescription = Nothing
-  , _toolInputSchema = schema
-  }
+makeTool name schema
+  = Tool { _toolName = name, _toolDescription = Nothing, _toolInputSchema = schema }
 
 instance ToJSON Tool where
   toJSON t
@@ -169,7 +155,7 @@ instance FromJSON Tool where
   parseJSON = withObject "Tool" $ \o -> do
     -- Support both wrapped and unwrapped formats
     mFn <- o .:? "function"
-    let fn = fromMaybe o mFn
+    let fn = mFn ^. non o
     toolName' <- fn .: "name"
     toolDescription' <- fn .:? "description"
     toolInputSchema' <- fn .: "parameters"
@@ -179,26 +165,20 @@ instance FromJSON Tool where
            , _toolInputSchema = toolInputSchema'
            }
 
-data AssistantMessage = AssistantMessage
-  { _amContent   :: Maybe Text
-  , _amToolCalls :: [ ToolCall ]
-  }
+data AssistantMessage = AssistantMessage { _amContent :: Maybe Text, _amToolCalls :: [ ToolCall ] }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''AssistantMessage
 
-makeAssistantMessage :: Maybe Text -> [ToolCall] -> AssistantMessage
-makeAssistantMessage content tcs = AssistantMessage
-  { _amContent = content
-  , _amToolCalls = tcs
-  }
+makeAssistantMessage :: Maybe Text -> [ ToolCall ] -> AssistantMessage
+makeAssistantMessage content tcs = AssistantMessage { _amContent = content, _amToolCalls = tcs }
 
 instance ToJSON AssistantMessage where
   toJSON am
     = object
       [ "role" .= Assistant
-      -- OpenAI requires content to be string (not null) when tool_calls present
-      , "content" .= fromMaybe "" (am ^. amContent)
+        -- OpenAI requires content to be string (not null) when tool_calls present
+      , "content" .= (am ^. amContent . non "")
       , "tool_calls"
         .= if null (am ^. amToolCalls)
           then Nothing
@@ -216,11 +196,7 @@ data Message
   | AssistantMsg AssistantMessage
   | SystemMessage { _smContent :: Text }
   | ToolResultMessage
-    { _trmToolCallId :: Text
-    , _trmToolName   :: Text
-    , _trmResult     :: Text
-    , _trmIsError    :: Bool
-    }
+    { _trmToolCallId :: Text, _trmToolName :: Text, _trmResult :: Text, _trmIsError :: Bool }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''Message
@@ -229,22 +205,22 @@ makeLenses ''Message
 _UserMessage :: Prism' Message Text
 _UserMessage = prism' UserMessage $ \case
   UserMessage c -> Just c
-  _             -> Nothing
+  _ -> Nothing
 
 _AssistantMsg :: Prism' Message AssistantMessage
 _AssistantMsg = prism' AssistantMsg $ \case
   AssistantMsg am -> Just am
-  _               -> Nothing
+  _ -> Nothing
 
 _SystemMessage :: Prism' Message Text
 _SystemMessage = prism' SystemMessage $ \case
   SystemMessage c -> Just c
-  _               -> Nothing
+  _ -> Nothing
 
-_ToolResultMessage :: Prism' Message (Text, Text, Text, Bool)
-_ToolResultMessage = prism' (\(cid, n, r, e) -> ToolResultMessage cid n r e) $ \case
-  ToolResultMessage cid n r e -> Just (cid, n, r, e)
-  _                           -> Nothing
+_ToolResultMessage :: Prism' Message ( Text, Text, Text, Bool )
+_ToolResultMessage = prism' (\( cid, n, r, e ) -> ToolResultMessage cid n r e) $ \case
+  ToolResultMessage cid n r e -> Just ( cid, n, r, e )
+  _ -> Nothing
 
 instance ToJSON Message where
   toJSON = \case
@@ -272,28 +248,25 @@ makeLenses ''StreamEvent
 _ContentDelta :: Prism' StreamEvent Text
 _ContentDelta = prism' ContentDelta $ \case
   ContentDelta t -> Just t
-  _              -> Nothing
+  _ -> Nothing
 
-_ToolCallStart :: Prism' StreamEvent (Int, Text, Text)
-_ToolCallStart = prism' (\(i, tid, n) -> ToolCallStart i tid n) $ \case
-  ToolCallStart i tid n -> Just (i, tid, n)
-  _                     -> Nothing
+_ToolCallStart :: Prism' StreamEvent ( Int, Text, Text )
+_ToolCallStart = prism' (\( i, tid, n ) -> ToolCallStart i tid n) $ \case
+  ToolCallStart i tid n -> Just ( i, tid, n )
+  _ -> Nothing
 
-_ToolCallDelta :: Prism' StreamEvent (Int, Text)
-_ToolCallDelta = prism' (\(i, args) -> ToolCallDelta i args) $ \case
-  ToolCallDelta i args -> Just (i, args)
-  _                    -> Nothing
+_ToolCallDelta :: Prism' StreamEvent ( Int, Text )
+_ToolCallDelta = prism' (uncurry ToolCallDelta) $ \case
+  ToolCallDelta i args -> Just ( i, args )
+  _ -> Nothing
 
 _Ping :: Prism' StreamEvent ()
 _Ping = prism' (const Ping) $ \case
   Ping -> Just ()
   _    -> Nothing
 
-data PartialToolCall = PartialToolCall
-  { _ptcId             :: Maybe Text
-  , _ptcName           :: Maybe Text
-  , _ptcArgumentsSoFar :: Text
-  }
+data PartialToolCall
+  = PartialToolCall { _ptcId :: Maybe Text, _ptcName :: Maybe Text, _ptcArgumentsSoFar :: Text }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''PartialToolCall
@@ -302,24 +275,18 @@ makePartialToolCall :: Text -- ^ id
                     -> Text -- ^ name
                     -> Text       -- ^ arguments
                     -> PartialToolCall
-makePartialToolCall id' name args =
-  PartialToolCall { _ptcId = Just id'
-                  , _ptcName = Just name
-                  , _ptcArgumentsSoFar = args }
+makePartialToolCall id' name args
+  = PartialToolCall { _ptcId = Just id', _ptcName = Just name, _ptcArgumentsSoFar = args }
 
-data PartialMessage = PartialMessage
-  { _pmContentSoFar   :: Text
-  , _pmToolCallsSoFar :: [ PartialToolCall ]
-  }
+data PartialMessage
+  = PartialMessage { _pmContentSoFar :: Text, _pmToolCallsSoFar :: [ PartialToolCall ] }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''PartialMessage
 
-makePartialMessage :: Text -> [PartialToolCall] -> PartialMessage
-makePartialMessage content tcs = PartialMessage
-  { _pmContentSoFar = content
-  , _pmToolCallsSoFar = tcs
-  }
+makePartialMessage :: Text -> [ PartialToolCall ] -> PartialMessage
+makePartialMessage content tcs
+  = PartialMessage { _pmContentSoFar = content, _pmToolCallsSoFar = tcs }
 
 data StreamResult
   = StreamCompleted AssistantMessage
@@ -331,32 +298,26 @@ data StreamResult
 _StreamCompleted :: Prism' StreamResult AssistantMessage
 _StreamCompleted = prism' StreamCompleted $ \case
   StreamCompleted am -> Just am
-  _                  -> Nothing
+  _ -> Nothing
 
 _StreamInterrupted :: Prism' StreamResult PartialMessage
 _StreamInterrupted = prism' StreamInterrupted $ \case
   StreamInterrupted pm -> Just pm
-  _                    -> Nothing
+  _ -> Nothing
 
 _StreamFailed :: Prism' StreamResult Text
 _StreamFailed = prism' StreamFailed $ \case
   StreamFailed t -> Just t
-  _              -> Nothing
+  _ -> Nothing
 
-data ProviderInfo = ProviderInfo
-  { _piName          :: Text
-  , _piModel         :: Text
-  , _piSupportsTools :: Bool
-  , _piMaxTokens     :: Maybe Int
-  }
+data ProviderInfo
+  = ProviderInfo
+  { _piName :: Text, _piModel :: Text, _piSupportsTools :: Bool, _piMaxTokens :: Maybe Int }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''ProviderInfo
 
 makeProviderInfo :: Text -> Text -> ProviderInfo
-makeProviderInfo name model = ProviderInfo
-  { _piName = name
-  , _piModel = model
-  , _piSupportsTools = True
-  , _piMaxTokens = Nothing
-  }
+makeProviderInfo name model
+  = ProviderInfo
+  { _piName = name, _piModel = model, _piSupportsTools = True, _piMaxTokens = Nothing }

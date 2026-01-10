@@ -34,7 +34,7 @@ import qualified Data.ByteString.Lazy      as BL
 import qualified Data.Map.Strict           as Map
 import qualified Data.Text                 as T
 
-import           Lens.Micro                ( (.~), (^.), (?~) )
+import           Lens.Micro                ( (.~), (?~), (^.) )
 import           Lens.Micro.TH             ( makeLenses )
 
 import           Telos.Core.Error          ( MCPError(..) )
@@ -42,21 +42,22 @@ import           Telos.MCP.JsonRpc
 import           Telos.MCP.Transport.StdIO
 import           Telos.MCP.Types
 
-data MCPConnection = MCPConnection
-  { _mcName             :: Text
-  , _mcHandle           :: StdIOHandle
-  , _mcNextId           :: TVar Int
-  , _mcCapabilities     :: ServerCapabilities
-  , _mcServerInfo       :: Maybe ServerInfo
-  , _mcPendingReqs      :: TVar (Map Int (TMVar (Either MCPError JsonRpcResponse)))
+data MCPConnection
+  = MCPConnection
+  { _mcName :: Text
+  , _mcHandle :: StdIOHandle
+  , _mcNextId :: TVar Int
+  , _mcCapabilities :: ServerCapabilities
+  , _mcServerInfo :: Maybe ServerInfo
+  , _mcPendingReqs :: TVar (Map Int (TMVar (Either MCPError JsonRpcResponse)))
   , _mcDispatcherThread :: ThreadId
   }
 
 makeLenses ''MCPConnection
 
 defaultClientCapabilities :: ClientCapabilities
-defaultClientCapabilities = makeClientCapabilities
-  & ccRoots ?~ (makeRootsCapability & rcListChanged .~ Just True)
+defaultClientCapabilities
+  = makeClientCapabilities & ccRoots ?~ (makeRootsCapability & rcListChanged ?~ True)
 
 defaultClientInfo :: ClientInfo
 defaultClientInfo = makeClientInfo "Telos" "0.1.0"
@@ -75,8 +76,8 @@ connectToServer config = do
       nextIdVar <- newTVarIO 1
       pendingReqs <- newTVarIO Map.empty
 
-      let initParams = makeInitializeParams defaultClientInfo
-            & ipCapabilities .~ defaultClientCapabilities
+      let initParams
+            = makeInitializeParams defaultClientInfo & ipCapabilities .~ defaultClientCapabilities
 
       initResult <- sendRequestDirect handle nextIdVar "initialize" (Just $ toJSON initParams)
 
@@ -89,15 +90,16 @@ connectToServer config = do
 
           dispatcherTid <- forkIO $ messageDispatcher handle pendingReqs
 
-          pure $ Right MCPConnection
-            { _mcName             = config ^. scName
-            , _mcHandle           = handle
-            , _mcNextId           = nextIdVar
-            , _mcCapabilities     = initResp ^. irCapabilities
-            , _mcServerInfo       = initResp ^. irServerInfo
-            , _mcPendingReqs      = pendingReqs
-            , _mcDispatcherThread = dispatcherTid
-            }
+          pure
+            $ Right
+              MCPConnection { _mcName = config ^. scName
+                            , _mcHandle = handle
+                            , _mcNextId = nextIdVar
+                            , _mcCapabilities = initResp ^. irCapabilities
+                            , _mcServerInfo = initResp ^. irServerInfo
+                            , _mcPendingReqs = pendingReqs
+                            , _mcDispatcherThread = dispatcherTid
+                            }
 
 messageDispatcher
   :: StdIOHandle -> TVar (Map Int (TMVar (Either MCPError JsonRpcResponse))) -> IO ()
@@ -112,7 +114,7 @@ messageDispatcher handle pendingReqs = forever $ do
       let err = Left $ MCPConnectionFailed $ T.pack $ show e
       mapM_ (\tmvar -> STM.atomically $ STM.tryPutTMVar tmvar err) (Map.elems pending)
 
-    Right msgResult -> case msgResult of
+    Right msgResult           -> case msgResult of
       Left _err -> pass
       Right msg -> handleMessage handle pendingReqs msg
 
@@ -160,12 +162,12 @@ handleServerRequest req = case req ^. jrqMethod of
 
 handleServerNotification :: JsonRpcNotification -> IO ()
 handleServerNotification notif = case notif ^. jrnMethod of
-  "notifications/cancelled"              -> pass
-  "notifications/progress"               -> pass
+  "notifications/cancelled" -> pass
+  "notifications/progress" -> pass
   "notifications/resources/list_changed" -> pass
-  "notifications/tools/list_changed"     -> pass
-  "notifications/prompts/list_changed"   -> pass
-  _                                      -> pass
+  "notifications/tools/list_changed" -> pass
+  "notifications/prompts/list_changed" -> pass
+  _ -> pass
 
 disconnectFromServer :: MCPConnection -> IO ()
 disconnectFromServer conn = do
@@ -237,7 +239,8 @@ parseResponse resp = case resp ^. jrsError of
   Nothing  -> case resp ^. jrsResult of
     Nothing  -> pure $ Left $ MCPProtocolError (-32603) "Missing result in response"
     Just val -> case fromJSON val of
-      Error str -> pure $ Left $ MCPProtocolError (-32603) $ T.pack $ "Failed to parse result: " <> str
+      Error str
+        -> pure $ Left $ MCPProtocolError (-32603) $ T.pack $ "Failed to parse result: " <> str
       Success a -> pure $ Right a
 
 sendRequest :: ( ToJSON params, FromJSON result )
@@ -248,8 +251,8 @@ sendRequest :: ( ToJSON params, FromJSON result )
 sendRequest conn method params = sendRequestRaw conn method (Just $ toJSON params)
 
 sendNotification :: (ToJSON params) => MCPConnection -> Text -> params -> IO (Either MCPError ())
-sendNotification conn method params =
-  sendNotificationRaw (conn ^. mcHandle) method (Just $ toJSON params)
+sendNotification conn method params
+  = sendNotificationRaw (conn ^. mcHandle) method (Just $ toJSON params)
 
 listTools :: MCPConnection -> IO (Either MCPError ListToolsResult)
 listTools conn = sendRequestRaw conn "tools/list" Nothing

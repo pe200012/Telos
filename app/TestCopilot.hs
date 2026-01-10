@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module TestCopilot (main) where
+module TestCopilot ( main ) where
 
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as TIO
@@ -10,7 +10,7 @@ import           Lens.Micro               ( (^.), non )
 import           Network.HTTP.Client      ( Manager )
 import           Network.HTTP.Client.TLS  ( newTlsManager )
 
-import           Telos.Core.Types         ( amContent, Message(UserMessage) )
+import           Telos.Core.Types         ( Message(UserMessage), amContent )
 import           Telos.LLM.Copilot.Auth
 import           Telos.LLM.Copilot.Client
 
@@ -33,7 +33,7 @@ main = do
     Right _tok -> do
       putStrLn "Loaded saved token successfully!"
       runTests auth mgr
-    Left _      -> do
+    Left _     -> do
       putStrLn "No valid saved token, starting OAuth device flow..."
       deviceResult <- initiateDeviceFlow auth
 

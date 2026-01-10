@@ -13,9 +13,10 @@ module Telos.Agent.Streaming
   , StreamConsumeResult(..)
   ) where
 
+import           Conduit
+
 import           Control.Concurrent.MVar ( isEmptyMVar )
 
-import           Conduit
 import           Data.Aeson              ( Value(..), eitherDecodeStrict' )
 import qualified Data.IntMap.Strict      as IntMap
 import qualified Data.Text               as T
@@ -26,10 +27,8 @@ import           Lens.Micro.TH           ( makeLenses )
 
 import           Telos.Core.Types
 
-data StreamAccumulator = StreamAccumulator
-  { _saContent   :: !Text
-  , _saToolCalls :: !(IntMap PartialToolCall)
-  }
+data StreamAccumulator
+  = StreamAccumulator { _saContent :: !Text, _saToolCalls :: !(IntMap PartialToolCall) }
   deriving ( Show, Eq )
 
 makeLenses ''StreamAccumulator
@@ -41,25 +40,28 @@ accumulate :: StreamAccumulator -> StreamEvent -> StreamAccumulator
 accumulate !acc event = case event of
   ContentDelta txt -> acc & saContent %~ (<> txt)
 
-  ToolCallStart idx toolId tName ->
-    let ptc = makePartialToolCall toolId tName ""
-    in acc & saToolCalls %~ IntMap.insert idx ptc
+  ToolCallStart idx toolId tName -> let
+      ptc = makePartialToolCall toolId tName ""
+    in 
+      acc & saToolCalls %~ IntMap.insert idx ptc
 
-  ToolCallDelta idx argChunk ->
-    let updateArgs ptc = ptc & ptcArgumentsSoFar %~ (<> argChunk)
-    in acc & saToolCalls %~ IntMap.adjust updateArgs idx
+  ToolCallDelta idx argChunk -> let
+      updateArgs ptc = ptc & ptcArgumentsSoFar %~ (<> argChunk)
+    in 
+      acc & saToolCalls %~ IntMap.adjust updateArgs idx
 
   Ping -> acc
 
 finalizeAccumulator :: StreamAccumulator -> PartialMessage
-finalizeAccumulator acc = makePartialMessage
-  (acc ^. saContent)
-  (IntMap.elems (acc ^. saToolCalls))
+finalizeAccumulator acc = makePartialMessage (acc ^. saContent) (IntMap.elems (acc ^. saToolCalls))
 
 accumulatorToAssistantMessage :: StreamAccumulator -> Either Text AssistantMessage
 accumulatorToAssistantMessage acc = do
   toolCalls <- traverse partialToToolCall (IntMap.elems (acc ^. saToolCalls))
-  let content = if T.null (acc ^. saContent) then Nothing else Just (acc ^. saContent)
+  let content
+        = if T.null (acc ^. saContent)
+          then Nothing
+          else Just (acc ^. saContent)
   Right $ makeAssistantMessage content toolCalls
   where
     partialToToolCall :: PartialToolCall -> Either Text ToolCall
@@ -81,11 +83,10 @@ data StreamConsumeResult
   | StreamConsumeFailed !Text
   deriving ( Show, Eq )
 
-consumeStreamWithInterrupt
-  :: MVar ()
-  -> (StreamEvent -> IO ())
-  -> ConduitT () StreamEvent IO StreamResult
-  -> IO StreamConsumeResult
+consumeStreamWithInterrupt :: MVar ()
+                           -> (StreamEvent -> IO ())
+                           -> ConduitT () StreamEvent IO StreamResult
+                           -> IO StreamConsumeResult
 consumeStreamWithInterrupt interruptVar onEvent source = do
   accRef <- newIORef emptyAccumulator
   _streamResult <- runConduit $ fuseUpstream source (processEvents accRef)

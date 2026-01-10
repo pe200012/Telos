@@ -1,8 +1,8 @@
-module Telos.MCP.ServerManagerSpec (spec) where
-
-import           Test.Hspec
+module Telos.MCP.ServerManagerSpec ( spec ) where
 
 import           Telos.MCP.ServerManager
+
+import           Test.Hspec
 
 spec :: Spec
 spec = do
@@ -38,7 +38,7 @@ spec = do
         mgr <- newServerManager
         result <- aggregateTools mgr
         case result of
-          Left _ -> expectationFailure "Should not fail on empty manager"
+          Left _      -> expectationFailure "Should not fail on empty manager"
           Right tools -> length tools `shouldBe` 0
 
     describe "findToolServer" $ do

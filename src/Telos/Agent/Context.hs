@@ -19,19 +19,19 @@ module Telos.Agent.Context
   , resetIteration
   ) where
 
-import           Lens.Micro          ( (^.) )
-import           Lens.Micro.TH       ( makeLenses )
+import           Lens.Micro         ( (^.) )
+import           Lens.Micro.TH      ( makeLenses )
 
-import           Telos.Agent.Config  ( AgentConfig )
-import           Telos.Core.Types    ( Message, Tool )
+import           Telos.Agent.Config ( AgentConfig )
+import           Telos.Core.Types   ( Message, Tool )
 
-data AgentContext = AgentContext
-  { _ctxHistory   :: TVar [ Message ]
-  , _ctxTools     :: TVar [ Tool ]
-  , _ctxInterrupt :: MVar ()
-  , _ctxIteration :: TVar Int
-  , _ctxConfig    :: AgentConfig
-  }
+data AgentContext
+  = AgentContext { _ctxHistory   :: TVar [ Message ]
+                 , _ctxTools     :: TVar [ Tool ]
+                 , _ctxInterrupt :: MVar ()
+                 , _ctxIteration :: TVar Int
+                 , _ctxConfig    :: AgentConfig
+                 }
 
 makeLenses ''AgentContext
 
@@ -41,13 +41,13 @@ newAgentContext cfg = do
   tools <- newTVarIO []
   interrupt <- newEmptyMVar
   iteration <- newTVarIO 0
-  pure AgentContext
-    { _ctxHistory   = history
-    , _ctxTools     = tools
-    , _ctxInterrupt = interrupt
-    , _ctxIteration = iteration
-    , _ctxConfig    = cfg
-    }
+  pure
+    AgentContext { _ctxHistory   = history
+                 , _ctxTools     = tools
+                 , _ctxInterrupt = interrupt
+                 , _ctxIteration = iteration
+                 , _ctxConfig    = cfg
+                 }
 
 addMessage :: AgentContext -> Message -> IO ()
 addMessage ctx msg = atomically $ modifyTVar' (ctx ^. ctxHistory) (++ [ msg ])

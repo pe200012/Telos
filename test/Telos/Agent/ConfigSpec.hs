@@ -1,9 +1,10 @@
 module Telos.Agent.ConfigSpec ( spec ) where
 
-import Lens.Micro ( (^.), (.~) )
-import Test.Hspec
+import           Lens.Micro         ( (.~), (^.) )
 
-import Telos.Agent.Config
+import           Telos.Agent.Config
+
+import           Test.Hspec
 
 spec :: Spec
 spec = do
@@ -23,9 +24,10 @@ spec = do
 
   describe "MCPServerConfig" $ do
     it "can be constructed with all fields" $ do
-      let cfg = makeMCPServerConfig "test-server" "/usr/bin/test" ["--arg1", "--arg2"]
-                  & mscEnv .~ [("KEY", "VALUE")]
+      let cfg
+            = makeMCPServerConfig "test-server" "/usr/bin/test" [ "--arg1", "--arg2" ]
+            & mscEnv .~ [ ( "KEY", "VALUE" ) ]
       (cfg ^. mscName) `shouldBe` "test-server"
       (cfg ^. mscCommand) `shouldBe` "/usr/bin/test"
-      (cfg ^. mscArgs) `shouldBe` ["--arg1", "--arg2"]
-      (cfg ^. mscEnv) `shouldBe` [("KEY", "VALUE")]
+      (cfg ^. mscArgs) `shouldBe` [ "--arg1", "--arg2" ]
+      (cfg ^. mscEnv) `shouldBe` [ ( "KEY", "VALUE" ) ]

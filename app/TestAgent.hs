@@ -1,94 +1,99 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module TestAgent (main) where
+module TestAgent ( main ) where
 
-import qualified Data.Text                 as T
-import qualified Data.Text.IO              as TIO
+import qualified Data.Text                as T
+import qualified Data.Text.IO             as TIO
 
-import           Lens.Micro                ( (^.), (.~), (?~) )
+import           Lens.Micro               ( (.~), (?~), (^.) )
 
-import           Network.HTTP.Client       ( newManager )
-import           Network.HTTP.Client.TLS   ( tlsManagerSettings )
+import           Network.HTTP.Client      ( newManager )
+import           Network.HTTP.Client.TLS  ( tlsManagerSettings )
 
-import           Polysemy                  ( runM )
-import           Polysemy.Error            ( runError )
+import           Polysemy                 ( runM )
+import           Polysemy.Error           ( runError )
 
-import           Telos.Agent.Config        ( acMaxIterations
-                                           , acModel
-                                           , acSystemPrompt
-                                           , defaultAgentConfig
-                                           )
-import           Telos.Agent.Context       ( newAgentContext, registerTools )
-import           Telos.Agent.Loop          ( AgentResult(..), runAgentLoop )
-import           Telos.Core.Error          ( AppError )
-import           Telos.Core.Types          ( toolName )
-import           Telos.Effect.Logger.IO    ( runLoggerIO )
-import           Telos.LLM.Copilot.Auth    ( newCopilotAuth )
-import           Telos.LLM.Copilot.Client  ( CopilotConfig(..), newCopilotClient )
-import           Telos.LLM.Interpreter     ( runLLMWithCopilot )
-import           Telos.MCP.Interpreter     ( runMCPWithManager )
-import           Telos.MCP.ServerManager   ( addServer
-                                           , aggregateTools
-                                           , newServerManager
-                                           , shutdownAll
-                                           , twsServerName
-                                           , twsTool
-                                           )
-import           Telos.MCP.Types           ( makeServerConfig )
+import           Telos.Agent.Config       ( acMaxIterations
+                                          , acModel
+                                          , acSystemPrompt
+                                          , defaultAgentConfig
+                                          )
+import           Telos.Agent.Context      ( newAgentContext, registerTools )
+import           Telos.Agent.Loop         ( AgentResult(..), runAgentLoop )
+import           Telos.Core.Error         ( AppError )
+import           Telos.Core.Types         ( toolName )
+import           Telos.Effect.Logger.IO   ( runLoggerIO )
+import           Telos.LLM.Copilot.Auth   ( newCopilotAuth )
+import           Telos.LLM.Copilot.Client ( CopilotConfig(..), newCopilotClient )
+import           Telos.LLM.Interpreter    ( runLLMWithCopilot )
+import           Telos.MCP.Interpreter    ( runMCPWithManager )
+import           Telos.MCP.ServerManager  ( addServer
+                                          , aggregateTools
+                                          , newServerManager
+                                          , shutdownAll
+                                          , twsServerName
+                                          , twsTool
+                                          )
+import           Telos.MCP.Types          ( makeServerConfig )
 
 main :: IO ()
 main = do
   putStrLn "=== Telos Agent Test ==="
-  
+
   httpManager <- newManager tlsManagerSettings
   auth <- newCopilotAuth httpManager
-  
-  let copilotCfg = CopilotConfig
-        { _ccModel = "gpt-4o"
-        , _ccMaxTokens = Just 4096
-        }
-      client = newCopilotClient auth httpManager copilotCfg
-  
+
+  let copilotCfg = CopilotConfig { _ccModel = "gpt-4o", _ccMaxTokens = Just 4096 }
+      client     = newCopilotClient auth httpManager copilotCfg
+
   serverMgr <- newServerManager
-  
-  let fsConfig = makeServerConfig "filesystem" "npx" ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-  
+
+  let fsConfig
+        = makeServerConfig
+          "filesystem"
+          "npx"
+          [ "-y", "@modelcontextprotocol/server-filesystem", "/tmp" ]
+
   putStrLn "Connecting to filesystem MCP server..."
   fsResult <- addServer serverMgr fsConfig
   case fsResult of
     Left err -> putStrLn $ "Failed to connect: " ++ show err
     Right _  -> putStrLn "Connected to filesystem server"
-  
+
   toolsResult <- aggregateTools serverMgr
   case toolsResult of
     Left err -> putStrLn $ "Failed to list tools: " ++ show err
     Right toolsWithSource -> do
       let tools = map (^. twsTool) toolsWithSource
       putStrLn $ "Available tools: " ++ show (length tools)
-      mapM_ (\tws -> TIO.putStrLn $ "  - " <> (tws ^. twsServerName) <> "/" <> (tws ^. twsTool . toolName)) toolsWithSource
-      
-      let agentCfg = defaultAgentConfig
-            & acSystemPrompt ?~ "You are a helpful assistant with access to filesystem tools. Be concise."
+      mapM_
+        (\tws -> TIO.putStrLn
+         $ "  - " <> (tws ^. twsServerName) <> "/" <> (tws ^. twsTool . toolName))
+        toolsWithSource
+
+      let agentCfg
+            = defaultAgentConfig
+            & acSystemPrompt
+            ?~ "You are a helpful assistant with access to filesystem tools. Be concise."
             & acModel .~ "gpt-4o"
             & acMaxIterations .~ 5
 
-      
       ctx <- newAgentContext agentCfg
       registerTools ctx tools
-      
+
       putStrLn "\n=== Running Agent ==="
       let testInput = "List the files in /tmp directory"
       TIO.putStrLn $ "User: " <> T.pack testInput
-      
+
       result <- runM
         $ runError @AppError
         $ runLoggerIO
         $ runMCPWithManager serverMgr
         $ runLLMWithCopilot client
         $ runAgentLoop ctx (T.pack testInput)
-      
+
       case result of
-        Left err -> putStrLn $ "Error: " ++ show err
+        Left err          -> putStrLn $ "Error: " ++ show err
         Right agentResult -> case agentResult of
           AgentResponse resp -> do
             putStrLn "\n=== Agent Response ==="
@@ -100,7 +105,7 @@ main = do
             putStrLn "\n=== Max Iterations ==="
             TIO.putStrLn partial
           AgentError err -> putStrLn $ "Agent error: " ++ T.unpack err
-  
+
   putStrLn "\nShutting down..."
   shutdownAll serverMgr
   putStrLn "Done."

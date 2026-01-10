@@ -14,32 +14,32 @@ import           Polysemy                 ( Embed, InterpreterFor, Member, embed
 
 import           Telos.Core.Error         ( LLMError(..) )
 import           Telos.Core.Types         ( AssistantMessage
+                                          , StreamEvent(..)
+                                          , StreamResult(..)
                                           , makePartialMessage
                                           , makeProviderInfo
                                           , piMaxTokens
-                                          , StreamEvent(..)
-                                          , StreamResult(..)
                                           )
 import           Telos.Effect.LLM         ( LLM(..) )
 import           Telos.LLM.Copilot.Client ( ChatResponse(..)
                                           , CopilotClient(..)
                                           , Delta(..)
                                           , ToolCallChunk(..)
+                                          , ccMaxTokens
+                                          , ccModel
                                           , chChoices
                                           , chDelta
                                           , chMessage
                                           , clConfig
-                                          , ccModel
-                                          , ccMaxTokens
                                           , dContent
                                           , dToolCalls
                                           , fcArguments
                                           , fcName
+                                          , sendChatRequest
+                                          , sendChatRequestStream
                                           , tccFunction
                                           , tccId
                                           , tccIndex
-                                          , sendChatRequest
-                                          , sendChatRequestStream
                                           )
 
 -- | Run LLM effect with Copilot backend
@@ -61,7 +61,7 @@ runLLMWithCopilot client = interpret $ \case
 
   GetProviderInfo           -> pure
     $ makeProviderInfo "GitHub Copilot" (client ^. clConfig . ccModel)
-      & piMaxTokens .~ (client ^. clConfig . ccMaxTokens)
+    & piMaxTokens .~ (client ^. clConfig . ccMaxTokens)
 
 -- | Extract assistant message from chat response
 extractAssistantMessage :: ChatResponse -> Maybe AssistantMessage

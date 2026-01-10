@@ -38,7 +38,7 @@ runMCPWithManager mgr = interpret $ \case
 convertToolResult :: Types.CallToolResult -> ToolResult
 convertToolResult ctr
   = makeToolResult (map convertContentPart (ctr ^. Types.ctrContent))
-      & trIsError .~ (ctr ^. Types.ctrIsError . non False)
+  & trIsError .~ (ctr ^. Types.ctrIsError . non False)
 
 convertContentPart :: Types.ContentPart -> ContentItem
 convertContentPart = \case
@@ -53,7 +53,8 @@ fetchResources conn = do
   pure $ fmap (map convertResource . (^. Types.lrrResources)) result
 
 convertResource :: Types.ResourceInfo -> Resource
-convertResource ri = makeResource (ri ^. Types.riUri) (ri ^. Types.riName)
+convertResource ri
+  = makeResource (ri ^. Types.riUri) (ri ^. Types.riName)
   & resMimeType .~ (ri ^. Types.riMimeType)
   & resDescription .~ (ri ^. Types.riDescription)
 
@@ -68,9 +69,9 @@ tryReadFromServers (conn : rest) uri = do
       (c : _) -> pure
         $ Right
         $ makeResourceContent (c ^. Types.resUri)
-          & rcMimeType .~ (c ^. Types.resMimeType)
-          & rcText .~ (c ^. Types.resText)
-          & rcBlob .~ (c ^. Types.resBlob)
+        & rcMimeType .~ (c ^. Types.resMimeType)
+        & rcText .~ (c ^. Types.resText)
+        & rcBlob .~ (c ^. Types.resBlob)
 
 -- | Local version to avoid conflict with Relude.rights
 rights' :: [ Either a b ] -> [ b ]

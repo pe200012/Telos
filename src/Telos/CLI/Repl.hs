@@ -4,42 +4,46 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Telos.CLI.Repl
-  ( ReplState
-  , newReplState
-  , runRepl
-  , ReplCommand(..)
-  , parseCommand
-  ) where
+module Telos.CLI.Repl ( ReplState, newReplState, runRepl, ReplCommand(..), parseCommand ) where
 
-import qualified Data.Text                 as T
-import qualified Data.Text.IO              as TIO
+import qualified Data.Text                   as T
+import qualified Data.Text.IO                as TIO
 
-import           Lens.Micro                ( (^.), (.~) )
+import           Lens.Micro                  ( (.~), (^.) )
 
-import           System.IO                 ( hFlush, stdout )
+import           System.IO                   ( hFlush, stdout )
 
-import           Telos.CLI.Config          ( CliConfig, ccMcpServers, ccMaxIterations
-                                           , ccModel, ccSystemPrompt )
-import           Telos.CLI.LazyServerManager ( LazyServerManager, ServerStatus(..)
-                                             , aggregateToolsLazy, getServerStatus
-                                             , newLazyServerManager, registerServer
-                                             , shutdownAllLazy )
-import           Telos.Agent.Config        ( makeAgentConfig
-                                           , acMaxIterations, acSystemPrompt )
-import           Telos.Agent.Context       ( AgentContext, clearHistory, newAgentContext
-                                           , registerTools )
-import           Telos.Agent.Loop          ( AgentResult(..) )
-import           Telos.Core.Types          ( toolName, toolDescription )
-import           Telos.LLM.Copilot.Auth    ( CopilotAuth )
+import           Telos.Agent.Config          ( acMaxIterations, acSystemPrompt, makeAgentConfig )
+import           Telos.Agent.Context         ( AgentContext
+                                             , clearHistory
+                                             , newAgentContext
+                                             , registerTools
+                                             )
+import           Telos.Agent.Loop            ( AgentResult(..) )
+import           Telos.CLI.Config            ( CliConfig
+                                             , ccMaxIterations
+                                             , ccMcpServers
+                                             , ccModel
+                                             , ccSystemPrompt
+                                             )
+import           Telos.CLI.LazyServerManager ( LazyServerManager
+                                             , ServerStatus(..)
+                                             , aggregateToolsLazy
+                                             , getServerStatus
+                                             , newLazyServerManager
+                                             , registerServer
+                                             , shutdownAllLazy
+                                             )
+import           Telos.Core.Types            ( toolDescription, toolName )
+import           Telos.LLM.Copilot.Auth      ( CopilotAuth )
 
 -- | REPL state
-data ReplState = ReplState
-  { rsConfig        :: CliConfig
-  , rsServerManager :: LazyServerManager
-  , rsAgentContext  :: AgentContext
-  , rsAuth          :: CopilotAuth
-  }
+data ReplState
+  = ReplState { rsConfig        :: CliConfig
+              , rsServerManager :: LazyServerManager
+              , rsAgentContext  :: AgentContext
+              , rsAuth          :: CopilotAuth
+              }
 
 -- | Create new REPL state
 newReplState :: CliConfig -> CopilotAuth -> IO ReplState
@@ -47,40 +51,32 @@ newReplState config auth = do
   -- Create lazy server manager and register servers
   serverMgr <- newLazyServerManager
   mapM_ (registerServer serverMgr) (config ^. ccMcpServers)
-  
+
   -- Create agent config from CLI config
-  let agentConfig = makeAgentConfig (config ^. ccModel)
+  let agentConfig
+        = makeAgentConfig (config ^. ccModel)
         & acMaxIterations .~ (config ^. ccMaxIterations)
         & acSystemPrompt .~ (config ^. ccSystemPrompt)
-  
+
   -- Create agent context (initially no tools - will be loaded lazily)
   agentCtx <- newAgentContext agentConfig
-  
-  pure $ ReplState
-    { rsConfig = config
-    , rsServerManager = serverMgr
-    , rsAgentContext = agentCtx
-    , rsAuth = auth
-    }
+
+  pure
+    $ ReplState
+    { rsConfig = config, rsServerManager = serverMgr, rsAgentContext = agentCtx, rsAuth = auth }
 
 -- | REPL commands
-data ReplCommand
-  = CmdQuit
-  | CmdClear
-  | CmdTools
-  | CmdServers
-  | CmdHelp
-  | CmdMessage Text
-  deriving stock (Eq, Show)
+data ReplCommand = CmdQuit | CmdClear | CmdTools | CmdServers | CmdHelp | CmdMessage Text
+  deriving stock ( Eq, Show )
 
 -- | Parse user input into command
 parseCommand :: Text -> ReplCommand
 parseCommand input
-  | cmd `elem` ["/quit", "/q", "/exit"] = CmdQuit
+  | cmd `elem` [ "/quit", "/q", "/exit" ] = CmdQuit
   | cmd == "/clear" = CmdClear
   | cmd == "/tools" = CmdTools
   | cmd == "/servers" = CmdServers
-  | cmd `elem` ["/help", "/h", "/?"] = CmdHelp
+  | cmd `elem` [ "/help", "/h", "/?" ] = CmdHelp
   | otherwise = CmdMessage input
   where
     cmd = T.toLower $ T.strip input
@@ -97,31 +93,31 @@ runRepl initialState runAgent = do
       TIO.putStr "telos> "
       System.IO.hFlush System.IO.stdout
       input <- TIO.getLine
-      
+
       case parseCommand input of
-        CmdQuit -> do
+        CmdQuit        -> do
           TIO.putStrLn "Goodbye!"
           shutdownAllLazy (rsServerManager replState)
-        
-        CmdClear -> do
+
+        CmdClear       -> do
           clearHistory (rsAgentContext replState)
           TIO.putStrLn "Conversation history cleared."
           loop replState
-        
-        CmdTools -> do
+
+        CmdTools       -> do
           handleToolsCommand replState
           loop replState
-        
-        CmdServers -> do
+
+        CmdServers     -> do
           handleServersCommand replState
           loop replState
-        
-        CmdHelp -> do
+
+        CmdHelp        -> do
           printHelp
           loop replState
-        
-        CmdMessage "" -> loop replState  -- Empty input, just continue
-        
+
+        CmdMessage ""  -> loop replState  -- Empty input, just continue
+
         CmdMessage msg -> do
           -- Ensure tools are loaded before running agent
           replState' <- ensureToolsLoaded replState
@@ -134,7 +130,7 @@ ensureToolsLoaded :: ReplState -> IO ReplState
 ensureToolsLoaded replState = do
   toolsResult <- aggregateToolsLazy (rsServerManager replState)
   case toolsResult of
-    Left err -> do
+    Left err        -> do
       TIO.putStrLn $ "Warning: Failed to load some tools: " <> T.pack (show err)
       pure replState
     Right toolPairs -> do
@@ -147,18 +143,19 @@ handleToolsCommand :: ReplState -> IO ()
 handleToolsCommand replState = do
   toolsResult <- aggregateToolsLazy (rsServerManager replState)
   case toolsResult of
-    Left err -> TIO.putStrLn $ "Error loading tools: " <> T.pack (show err)
+    Left err        -> TIO.putStrLn $ "Error loading tools: " <> T.pack (show err)
     Right toolPairs -> do
       if null toolPairs
-        then TIO.putStrLn "No tools available. Configure MCP servers in ~/.config/telos/config.json"
+        then TIO.putStrLn
+          "No tools available. Configure MCP servers in ~/.config/telos/config.json"
         else do
           TIO.putStrLn $ "Available tools (" <> T.pack (show $ length toolPairs) <> "):"
           TIO.putStrLn ""
-          forM_ toolPairs $ \(tool, serverName) -> do
+          forM_ toolPairs $ \( tool, serverName ) -> do
             TIO.putStrLn $ "  " <> (tool ^. toolName) <> " [" <> serverName <> "]"
             case tool ^. toolDescription of
               Just desc -> TIO.putStrLn $ "    " <> T.take 80 desc
-              Nothing -> pure ()
+              Nothing   -> pure ()
 
 -- | Handle /servers command
 handleServersCommand :: ReplState -> IO ()
@@ -169,10 +166,10 @@ handleServersCommand replState = do
     else do
       TIO.putStrLn "MCP Servers:"
       TIO.putStrLn ""
-      forM_ statuses $ \(name, serverStatus) -> do
+      forM_ statuses $ \( name, serverStatus ) -> do
         let statusStr = case serverStatus of
               Registered -> "registered (not connected)"
-              Connected -> "connected"
+              Connected  -> "connected"
               Failed err -> "failed: " <> err
         TIO.putStrLn $ "  " <> name <> ": " <> statusStr
 

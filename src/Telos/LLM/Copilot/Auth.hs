@@ -24,7 +24,7 @@ module Telos.LLM.Copilot.Auth
   , ensureValidToken
   , getToken
   , loadSavedToken
-  -- Export unused lenses to suppress warnings
+    -- Export unused lenses to suppress warnings
   , otrTokenType
   , otrScope
   , oeDescription
@@ -70,12 +70,13 @@ makeLenses ''CopilotToken
 
 -- | Device code response from GitHub
 data DeviceCodeResponse
-  = DeviceCodeResponse { _dcrDeviceCode      :: Text
-                       , _dcrUserCode        :: Text
-                       , _dcrVerificationUri :: Text
-                       , _dcrExpiresIn       :: Int
-                       , _dcrInterval        :: Int
-                       }
+  = DeviceCodeResponse
+  { _dcrDeviceCode      :: Text
+  , _dcrUserCode        :: Text
+  , _dcrVerificationUri :: Text
+  , _dcrExpiresIn       :: Int
+  , _dcrInterval        :: Int
+  }
   deriving stock ( Show, Generic )
 
 makeLenses ''DeviceCodeResponse
@@ -325,9 +326,7 @@ getCopilotToken auth oauthToken = do
       Right ctr -> do
         now <- getCurrentTime
         let expiresAt
-              = addUTCTime
-                (fromIntegral (ctr ^. ctrExpiresAt) - utcTimeToPOSIXSeconds now)
-                now
+              = addUTCTime (fromIntegral (ctr ^. ctrExpiresAt) - utcTimeToPOSIXSeconds now) now
         pure $ Right CopilotToken { _ctToken = ctr ^. ctrToken, _ctExpiresAt = expiresAt }
     401  -> pure $ Left $ AuthDenied "Invalid OAuth token"
     code -> pure $ Left $ AuthNetworkError $ "HTTP " <> show code

@@ -17,7 +17,7 @@ module Telos.Agent.Loop
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 
-import           Lens.Micro                ( (.~), (^.), non, _last )
+import           Lens.Micro                ( (.~), (^.), _last, non )
 
 import           Polysemy                  ( Embed, Members, Sem, embed )
 
@@ -38,7 +38,13 @@ import qualified Telos.Core.Types          as Core
 import           Telos.Core.Types          ( _AssistantMsg )
 import           Telos.Effect.LLM          ( LLM, chat, chatStream )
 import           Telos.Effect.Logger       ( Logger, logDebug, logInfo, logWarn )
-import           Telos.Effect.MCP          ( ContentItem(..), MCP, ToolResult, callTool, trContent, trIsError )
+import           Telos.Effect.MCP          ( ContentItem(..)
+                                           , MCP
+                                           , ToolResult
+                                           , callTool
+                                           , trContent
+                                           , trIsError
+                                           )
 import           Telos.Effect.StreamOutput ( StreamOutput, flushOutput, outputNewline )
 import qualified Telos.MCP.Types           as MCP
 
@@ -120,8 +126,8 @@ runAgentLoopStreaming ctx userInput = do
               let partialResponse = extractLastAssistantContent history
               pure $ AgentMaxIterations partialResponse
             else agentStepStreaming c >>= \case
-                Left done -> pure done
-                Right ()  -> loop c
+              Left done -> pure done
+              Right ()  -> loop c
 
 -- | Single non-streaming agent step
 agentStep
@@ -181,18 +187,18 @@ agentStepStreaming ctx = do
   flushOutput
 
   case result of
-      StreamConsumeFailed err -> do
-        logWarn $ "Stream error: " <> err
-        pure $ Left $ AgentError err
+    StreamConsumeFailed err -> do
+      logWarn $ "Stream error: " <> err
+      pure $ Left $ AgentError err
 
-      StreamConsumeInterrupted partial -> do
-        logInfo "Stream interrupted by user"
-        let content = partial ^. Core.pmContentSoFar
-        pure $ Left $ AgentInterrupted content
+    StreamConsumeInterrupted partial -> do
+      logInfo "Stream interrupted by user"
+      let content = partial ^. Core.pmContentSoFar
+      pure $ Left $ AgentInterrupted content
 
-      StreamConsumeCompleted assistantMsg -> do
-        embed $ addMessage ctx (Core.AssistantMsg assistantMsg)
-        handleAssistantMessage ctx assistantMsg
+    StreamConsumeCompleted assistantMsg -> do
+      embed $ addMessage ctx (Core.AssistantMsg assistantMsg)
+      handleAssistantMessage ctx assistantMsg
 
 -- | Handle stream events for real-time output
 streamEventHandler :: Core.StreamEvent -> IO ()
@@ -235,7 +241,7 @@ executeToolCalls :: Members '[ MCP, Logger, Embed IO ] r
                  -> Sem r [ Core.Message ]
 executeToolCalls _ctx toolCalls = do
   forM toolCalls $ \tc -> do
-    let tName = tc ^. Core.tcName
+    let tName    = tc ^. Core.tcName
         toolArgs = tc ^. Core.tcArguments
         toolId   = tc ^. Core.tcId
 
@@ -271,5 +277,5 @@ extractLastAssistantContent msgs = msgs ^. _last . _AssistantMsg . Core.amConten
 mcpToolToCoreTool :: Text -> MCP.ToolInfo -> Core.Tool
 mcpToolToCoreTool serverName ti
   = Core.makeTool (serverName <> "/" <> (ti ^. MCP.tiName)) (ti ^. MCP.tiInputSchema)
-      & Core.toolDescription .~ (ti ^. MCP.tiDescription)
+  & Core.toolDescription .~ (ti ^. MCP.tiDescription)
 

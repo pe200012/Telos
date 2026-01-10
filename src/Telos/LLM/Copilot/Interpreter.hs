@@ -58,7 +58,7 @@ runLLMCopilot env = interpret $ \case
 
   GetProviderInfo           -> pure
     $ makeProviderInfo "GitHub Copilot" (env ^. ceClient . clConfig . ccModel)
-      & piMaxTokens .~ (env ^. ceClient . clConfig . ccMaxTokens)
+    & piMaxTokens .~ (env ^. ceClient . clConfig . ccMaxTokens)
 
 -- | Extract AssistantMessage from ChatResponse
 extractAssistantMessage :: ChatResponse -> Either LLMError AssistantMessage

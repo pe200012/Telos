@@ -25,7 +25,7 @@ import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as TE
 
 import           Lens.Micro               ( (^.), non )
-import           Lens.Micro.Pro           ( at, (?~) )
+import           Lens.Micro.Pro           ( (?~), at )
 import           Lens.Micro.TH            ( makeLenses )
 
 import           Telos.Core.Types
@@ -62,8 +62,7 @@ makeLenses ''StreamCollector
 
 -- | Create new stream collector
 newStreamCollector :: IO StreamCollector
-newStreamCollector
-  = StreamCollector <$> newIORef "" <*> newIORef Map.empty <*> newIORef Nothing
+newStreamCollector = StreamCollector <$> newIORef "" <*> newIORef Map.empty <*> newIORef Nothing
 
 -- | Process a streaming chat response chunk
 processStreamEvent :: StreamCollector -> ChatResponse -> IO StreamEvent
@@ -108,7 +107,8 @@ processToolCallChunk collector chunk = do
   -- Update builder with new data
   let newId = firstJust (chunk ^. tccId) (current ^. tcbId)
   let newName = firstJust ((chunk ^. tccFunction) >>= (^. fcName)) (current ^. tcbName)
-  let newArgs = (current ^. tcbArguments) <> ((chunk ^. tccFunction) >>= (^. fcArguments)) ^. non ""
+  let newArgs
+        = (current ^. tcbArguments) <> ((chunk ^. tccFunction) >>= (^. fcArguments)) ^. non ""
 
   let updated = ToolCallBuilder newId newName newArgs
   writeIORef (collector ^. scToolCalls) (currentMap & at idx ?~ updated)
@@ -133,14 +133,22 @@ finalizeStream collector = do
 
   let toolCalls = map builderToToolCall $ Map.toList toolCallsMap
 
-  let msg = makeAssistantMessage (if T.null content then Nothing else Just content) toolCalls
+  let msg
+        = makeAssistantMessage
+          (if T.null content
+             then Nothing
+             else Just content)
+          toolCalls
 
   pure $ StreamCompleted msg
 
 -- | Convert builder to ToolCall
 builderToToolCall :: ( Int, ToolCallBuilder ) -> ToolCall
 builderToToolCall ( _, builder )
-  = makeToolCall (builder ^. tcbId . non "") (builder ^. tcbName . non "") (parseArguments (builder ^. tcbArguments))
+  = makeToolCall
+    (builder ^. tcbId . non "")
+    (builder ^. tcbName . non "")
+    (parseArguments (builder ^. tcbArguments))
   where
     parseArguments :: Text -> Value
     parseArguments t

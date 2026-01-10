@@ -1,12 +1,14 @@
 module Telos.Agent.InterruptSpec ( spec ) where
 
 import           Control.Concurrent.MVar ( isEmptyMVar )
+
 import           Lens.Micro              ( (^.) )
-import           Test.Hspec
 
 import           Telos.Agent.Config      ( defaultAgentConfig )
-import           Telos.Agent.Context     ( newAgentContext, ctxInterrupt )
+import           Telos.Agent.Context     ( ctxInterrupt, newAgentContext )
 import           Telos.Agent.Interrupt
+
+import           Test.Hspec
 
 spec :: Spec
 spec = do
