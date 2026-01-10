@@ -14,10 +14,6 @@ module Telos.Agent.Loop
   , mcpToolToCoreTool
   ) where
 
-import           Control.Monad             ( forM )
-
-import           Data.Maybe                ( fromMaybe )
-import           Data.Text                 ( Text )
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 

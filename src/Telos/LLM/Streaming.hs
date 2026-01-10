@@ -10,15 +10,9 @@ module Telos.LLM.Streaming
 
 import           Conduit
 
-import           Control.Monad            ( forM_ )
-
 import           Data.Aeson               ( Value(..), eitherDecode )
 import qualified Data.ByteString.Lazy     as BL
-import           Data.IORef
-import           Data.Map.Strict          ( Map )
 import qualified Data.Map.Strict          as Map
-import           Data.Maybe               ( fromMaybe )
-import           Data.Text                ( Text )
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as TE
 
@@ -89,14 +83,14 @@ processToolCallChunk collector chunk = do
   -- Update builder with new data
   let newId = firstJust (tccId chunk) (tcbId current)
   let newName = firstJust (tccFunction chunk >>= fcName) (tcbName current)
-  let newArgs = tcbArguments current <> Data.Maybe.fromMaybe "" (tccFunction chunk >>= fcArguments)
+  let newArgs = tcbArguments current <> fromMaybe "" (tccFunction chunk >>= fcArguments)
 
   let updated = ToolCallBuilder newId newName newArgs
   writeIORef (scToolCalls collector) (Map.insert idx updated currentMap)
 
   -- Generate event based on what's new
   case ( tccId chunk, tccFunction chunk >>= fcName ) of
-    ( Just tcId, Just name ) -> pure $ ToolCallStart idx tcId name
+    ( Just toolCallId, Just name ) -> pure $ ToolCallStart idx toolCallId name
     _ -> case tccFunction chunk >>= fcArguments of
       Just args
         | not (T.null args) -> pure $ ToolCallDelta idx args

@@ -1,9 +1,5 @@
 module Telos.Core.Error ( LLMError(..), MCPError(..), ProcessError(..), AppError(..) ) where
 
-import           Data.Text    ( Text )
-
-import           GHC.Generics ( Generic )
-
 data LLMError
   = LLMAuthError Text
   | LLMRateLimited Int

@@ -3,10 +3,6 @@
 
 module Telos.Agent.Config ( AgentConfig(..), MCPServerConfig(..), defaultAgentConfig ) where
 
-import           Data.Text    ( Text )
-
-import           GHC.Generics ( Generic )
-
 -- | Configuration for an MCP server connection
 data MCPServerConfig
   = MCPServerConfig { mscName    :: Text            -- ^ Unique identifier for this server

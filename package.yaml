@@ -85,6 +85,7 @@ default-extensions:
 
 ghc-options:
 - -Wall
+- -Werror
 - -Wcompat
 - -Widentities
 - -Wincomplete-record-updates
@@ -96,10 +97,14 @@ ghc-options:
 
 library:
   source-dirs: src
-  mixins:
-    - base hiding (Prelude)
-    - relude (Relude as Prelude)
-    - relude
+  dependencies:
+  - name: base
+    mixin:
+      - hiding (Prelude)
+  - name: relude
+    mixin:
+      - (Relude as Prelude)
+      - ""
 
 executables:
   Telos-exe:
@@ -111,6 +116,13 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - Telos
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - name: relude
+      mixin:
+        - (Relude as Prelude)
+        - ""
 
   test-copilot:
     main:                TestCopilot.hs
@@ -123,6 +135,13 @@ executables:
     - TestCopilot
     dependencies:
     - Telos
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - name: relude
+      mixin:
+        - (Relude as Prelude)
+        - ""
 
   test-agent:
     main:                TestAgent.hs
@@ -135,6 +154,13 @@ executables:
     - TestAgent
     dependencies:
     - Telos
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - name: relude
+      mixin:
+        - (Relude as Prelude)
+        - ""
 
 tests:
   Telos-test:
@@ -151,3 +177,10 @@ tests:
     - QuickCheck
     - quickcheck-instances
     - aeson
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - name: relude
+      mixin:
+        - (Relude as Prelude)
+        - ""

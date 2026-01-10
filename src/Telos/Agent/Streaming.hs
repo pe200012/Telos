@@ -15,17 +15,13 @@ module Telos.Agent.Streaming
   , StreamConsumeResult(..)
   ) where
 
-import           Conduit
+import           Control.Concurrent.MVar  ( isEmptyMVar )
 
-import           Control.Concurrent.MVar ( MVar, isEmptyMVar )
-import           Control.Monad           ( unless )
+import qualified Data.IntMap.Strict       as IntMap
+import qualified Data.Text as T
 
 import           Data.Aeson              ( Value(..), eitherDecodeStrict' )
-import           Data.IORef
-import           Data.IntMap.Strict      ( IntMap )
-import qualified Data.IntMap.Strict      as IntMap
-import           Data.Text               ( Text )
-import qualified Data.Text               as T
+import           Conduit
 import qualified Data.Text.Encoding      as TE
 
 import           Telos.Core.Types
@@ -46,17 +42,17 @@ emptyAccumulator = StreamAccumulator { saContent = "", saToolCalls = IntMap.empt
 -- | Accumulate a stream event into the accumulator.
 accumulate :: StreamAccumulator -> StreamEvent -> StreamAccumulator
 accumulate !acc event = case event of
-  ContentDelta text -> acc { saContent = saContent acc <> text }
+  ContentDelta txt -> acc { saContent = saContent acc <> txt }
 
-  ToolCallStart idx toolId toolName -> let
+  ToolCallStart idx toolId tName -> let
       ptc
-        = PartialToolCall { ptcId = Just toolId, ptcName = Just toolName, ptcArgumentsSoFar = "" }
-    in 
+        = PartialToolCall { ptcId = Just toolId, ptcName = Just tName, ptcArgumentsSoFar = "" }
+    in
       acc { saToolCalls = IntMap.insert idx ptc (saToolCalls acc) }
 
   ToolCallDelta idx argChunk -> let
       updateArgs ptc = ptc { ptcArgumentsSoFar = ptcArgumentsSoFar ptc <> argChunk }
-    in 
+    in
       acc { saToolCalls = IntMap.adjust updateArgs idx (saToolCalls acc) }
 
   Ping -> acc
@@ -81,14 +77,14 @@ accumulatorToAssistantMessage acc = do
     partialToToolCall :: PartialToolCall -> Either Text ToolCall
     partialToToolCall ptc = do
       toolId <- maybe (Left "Missing tool call ID") Right (ptcId ptc)
-      toolName <- maybe (Left "Missing tool call name") Right (ptcName ptc)
+      tName <- maybe (Left "Missing tool call name") Right (ptcName ptc)
       args <- parseArguments (ptcArgumentsSoFar ptc)
-      Right ToolCall { tcId = toolId, tcName = toolName, tcArguments = args }
+      Right ToolCall { tcId = toolId, tcName = tName, tcArguments = args }
 
     parseArguments :: Text -> Either Text Value
     parseArguments "" = Right (Object mempty)
     parseArguments t  = case eitherDecodeStrict' (TE.encodeUtf8 t) of
-      Left err -> Left $ "Failed to parse tool arguments: " <> T.pack err
+      Left err -> Left $ "Failed to parse tool arguments: " <> toText err
       Right v  -> Right v
 
 -- | Result of consuming a stream.
@@ -135,7 +131,7 @@ consumeStreamWithInterrupt interruptVar onEvent source = do
           unless interrupted $ do
             mevent <- await
             case mevent of
-              Nothing    -> pure ()  -- Stream ended
+              Nothing    -> pass  -- Stream ended
               Just event -> do
                 -- Process the event
                 liftIO $ do

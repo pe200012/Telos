@@ -1,10 +1,8 @@
 module Telos.MCP.ServerManagerSpec (spec) where
 
-import Data.Maybe (isNothing)
-import Test.Hspec
+import           Test.Hspec
 
-import Telos.MCP.ServerManager
-import Telos.MCP.Types
+import           Telos.MCP.ServerManager
 
 spec :: Spec
 spec = do

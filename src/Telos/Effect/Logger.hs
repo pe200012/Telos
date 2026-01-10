@@ -8,9 +8,7 @@ module Telos.Effect.Logger
   , logError
   ) where
 
-import           Data.Text ( Text )
-
-import           Polysemy  ( Member, Sem, makeSem )
+import           Polysemy ( Member, Sem, makeSem )
 
 data LogLevel = Debug | Info | Warn | Error
   deriving stock ( Eq, Ord, Show )

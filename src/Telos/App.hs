@@ -6,9 +6,6 @@
 module Telos.App ( AppConfig(..), runApp, runAgentOnce, runAgentOnceStreaming ) where
 
 import           Control.Exception            ( bracket )
-import           Control.Monad                ( forM_, unless )
-
-import           Data.Text                    ( Text )
 import qualified Data.Text                    as T
 import qualified Data.Text.IO                 as TIO
 
@@ -17,8 +14,6 @@ import           Network.HTTP.Client.TLS      ( tlsManagerSettings )
 
 import           Polysemy                     ( runM )
 import           Polysemy.Error               ( runError )
-
-import           System.IO                    ( hFlush, stdout )
 
 import           Telos.Agent.Config           ( AgentConfig(..), MCPServerConfig(..) )
 import           Telos.Agent.Context          ( AgentContext

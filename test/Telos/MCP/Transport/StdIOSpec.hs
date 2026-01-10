@@ -1,6 +1,6 @@
 module Telos.MCP.Transport.StdIOSpec (spec) where
 
-import Data.Aeson (Value, object, (.=))
+import Data.Aeson (object, (.=))
 import Test.Hspec
 
 import Telos.MCP.Transport.StdIO

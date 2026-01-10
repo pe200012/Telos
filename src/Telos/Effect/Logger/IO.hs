@@ -7,7 +7,7 @@ module Telos.Effect.Logger.IO ( runLoggerIO ) where
 
 import qualified Data.Text.IO        as TIO
 
-import           Polysemy            ( Embed, InterpreterFor, Member, Sem, embed, interpret )
+import           Polysemy            ( Embed, InterpreterFor, Member, embed, interpret )
 
 import           Telos.Effect.Logger ( LogLevel(..), Logger(..) )
 

@@ -21,10 +21,6 @@ import           Data.Aeson   ( (.:)
                               , withObject
                               , withText
                               )
-import           Data.Maybe   ( fromMaybe )
-import           Data.Text    ( Text )
-
-import           GHC.Generics ( Generic )
 
 data Role = User | Assistant | System | ToolRole
   deriving stock ( Eq, Show, Generic )

@@ -23,11 +23,7 @@ module Telos.MCP.Types
   ) where
 
 import           Data.Aeson
-import qualified Data.Aeson.KeyMap as KM
-import           Data.Aeson.Types  ( Parser )
-import           Data.Text         ( Text )
-
-import           GHC.Generics      ( Generic )
+import           Data.Aeson.Types ( Parser )
 
 type ProtocolVersion = Text
 
@@ -78,10 +74,10 @@ instance ToJSON SamplingCapability where
   toJSON _ = object []
 
 data ServerCapabilities
-  = ServerCapabilities { scLogging   :: Maybe Bool
-                       , scPrompts   :: Maybe PromptsCapability
-                       , scResources :: Maybe ResourcesCapability
-                       , scTools     :: Maybe ToolsCapability
+  = ServerCapabilities { scapLogging   :: Maybe Bool
+                       , scapPrompts   :: Maybe PromptsCapability
+                       , scapResources :: Maybe ResourcesCapability
+                       , scapTools     :: Maybe ToolsCapability
                        }
   deriving stock ( Eq, Show, Generic )
 
@@ -92,7 +88,7 @@ data ResourcesCapability
   = ResourcesCapability { rscSubscribe :: Maybe Bool, rscListChanged :: Maybe Bool }
   deriving stock ( Eq, Show, Generic )
 
-newtype ToolsCapability = ToolsCapability { tcListChanged :: Maybe Bool }
+newtype ToolsCapability = ToolsCapability { toolsListChanged :: Maybe Bool }
   deriving stock ( Eq, Show, Generic )
 
 instance FromJSON ServerCapabilities where
@@ -210,7 +206,7 @@ instance ToJSON ReadResourceParams where
 
 data ResourceContents
   = ResourceContents
-  { rcUri :: Text, rcMimeType :: Maybe Text, rcText :: Maybe Text, rcBlob :: Maybe Text }
+  { resUri :: Text, resMimeType :: Maybe Text, resText :: Maybe Text, resBlob :: Maybe Text }
   deriving stock ( Eq, Show, Generic )
 
 instance FromJSON ResourceContents where

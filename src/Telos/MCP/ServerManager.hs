@@ -11,14 +11,10 @@ module Telos.MCP.ServerManager
   , findToolServer
   ) where
 
-import           Control.Concurrent.STM
-import           Control.Exception      ( SomeException, try )
-import           Control.Monad          ( forM_ )
+import qualified Control.Concurrent.STM as STM
+import           Control.Exception      ( try )
 
-import           Data.Aeson             ( Value )
-import           Data.Map.Strict        ( Map )
 import qualified Data.Map.Strict        as Map
-import           Data.Text              ( Text )
 
 import           Telos.Core.Error       ( MCPError(..) )
 import           Telos.Core.Types       ( Tool(..) )
@@ -45,23 +41,23 @@ addServer mgr config = do
       case result of
         Left err   -> pure $ Left err
         Right conn -> do
-          atomically $ modifyTVar' (smConnections mgr) (Map.insert (scName config) conn)
+          atomically $ STM.modifyTVar' (smConnections mgr) (Map.insert (scName config) conn)
           pure $ Right conn
 
 removeServer :: ServerManager -> Text -> IO ()
-removeServer mgr name = do
+removeServer mgr srvName = do
   mConn <- atomically $ do
     conns <- readTVar (smConnections mgr)
-    let mConn = Map.lookup name conns
-    writeTVar (smConnections mgr) (Map.delete name conns)
-    pure mConn
+    let foundConn = Map.lookup srvName conns
+    writeTVar (smConnections mgr) (Map.delete srvName conns)
+    pure foundConn
 
   forM_ mConn disconnectFromServer
 
 getConnection :: ServerManager -> Text -> IO (Maybe MCPConnection)
-getConnection mgr name = atomically $ do
+getConnection mgr srvName = atomically $ do
   conns <- readTVar (smConnections mgr)
-  pure $ Map.lookup name conns
+  pure $ Map.lookup srvName conns
 
 getAllConnections :: ServerManager -> IO [ MCPConnection ]
 getAllConnections mgr = atomically $ do
@@ -71,15 +67,15 @@ getAllConnections mgr = atomically $ do
 shutdownAll :: ServerManager -> IO ()
 shutdownAll mgr = do
   conns <- atomically $ do
-    conns <- readTVar (smConnections mgr)
+    currentConns <- readTVar (smConnections mgr)
     writeTVar (smConnections mgr) Map.empty
-    pure $ Map.elems conns
+    pure $ Map.elems currentConns
 
   mapM_ safeDisconnect conns
   where
     safeDisconnect conn = do
       _ <- try @SomeException $ disconnectFromServer conn
-      pure ()
+      pass
 
 data ToolWithSource = ToolWithSource { twsTool :: Tool, twsServerName :: Text }
 
@@ -108,7 +104,7 @@ aggregateTools mgr = do
     combineResults = fmap concat . sequence
 
 findToolServer :: ServerManager -> Text -> IO (Maybe MCPConnection)
-findToolServer mgr toolName = do
+findToolServer mgr tName = do
   conns <- getAllConnections mgr
   findInConnections conns
   where
@@ -117,6 +113,6 @@ findToolServer mgr toolName = do
       result <- listTools conn
       case result of
         Left _    -> findInConnections rest
-        Right ltr -> if any (\ti -> tiName ti == toolName) (ltrTools ltr)
+        Right ltr -> if any (\ti -> tiName ti == tName) (ltrTools ltr)
           then pure $ Just conn
           else findInConnections rest

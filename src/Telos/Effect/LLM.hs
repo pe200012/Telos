@@ -2,9 +2,7 @@ module Telos.Effect.LLM ( LLM(..), chat, chatStream, getProviderInfo ) where
 
 import           Conduit          ( ConduitT )
 
-import           Data.Text        ( Text )
-
-import           Polysemy         ( Sem, makeSem )
+import           Polysemy         ( makeSem )
 
 import           Telos.Core.Error ( LLMError )
 import           Telos.Core.Types ( AssistantMessage

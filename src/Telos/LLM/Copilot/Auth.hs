@@ -16,18 +16,13 @@ module Telos.LLM.Copilot.Auth
   ) where
 
 import           Control.Concurrent        ( threadDelay )
-import           Control.Concurrent.STM
-import           Control.Exception         ( SomeException, try )
-import           Control.Monad             ( when )
+import           Control.Exception         ( try )
 
 import           Data.Aeson
 import qualified Data.ByteString.Lazy      as BL
-import           Data.Text                 ( Text )
-import qualified Data.Text                 as T
 import qualified Data.Text.Encoding        as TE
 import           Data.Time                 ( UTCTime, addUTCTime, diffUTCTime, getCurrentTime )
-
-import           GHC.Generics              ( Generic )
+import           Data.Time.Clock.POSIX     ( utcTimeToPOSIXSeconds )
 
 import           Network.HTTP.Client
 import           Network.HTTP.Types.Status ( statusCode )
@@ -149,17 +144,17 @@ newCopilotAuth mgr = do
 -- | Load saved token from disk
 loadSavedToken :: CopilotAuth -> IO (Either AuthError CopilotToken)
 loadSavedToken auth = do
-  path <- tokenFilePath
-  exists <- doesFileExist path
+  tokenPath <- tokenFilePath
+  exists <- doesFileExist tokenPath
   if not exists
     then pure $ Left $ AuthDenied "No saved token found"
     else do
-      result <- try $ BL.readFile path
+      result <- try $ BL.readFile tokenPath
       case result of
         Left (e :: SomeException)
-          -> pure $ Left $ AuthParseError $ "Failed to read token file: " <> T.pack (show e)
+          -> pure $ Left $ AuthParseError $ "Failed to read token file: " <> show e
         Right content -> case eitherDecode content of
-          Left err -> pure $ Left $ AuthParseError $ T.pack err
+          Left err -> pure $ Left $ AuthParseError $ toText err
           Right pt -> do
             now <- getCurrentTime
             -- Check if Copilot token is still valid (with 5 min buffer)
@@ -186,7 +181,7 @@ loadSavedToken auth = do
 -- | Save token to disk
 saveToken :: CopilotAuth -> Text -> CopilotToken -> IO ()
 saveToken _auth oauthTok copilotTok = do
-  path <- tokenFilePath
+  tokenPath <- tokenFilePath
   configDir <- getXdgDirectory XdgConfig "telos"
   createDirectoryIfMissing True configDir
   let persisted
@@ -194,7 +189,7 @@ saveToken _auth oauthTok copilotTok = do
                          , ptCopilotToken = ctToken copilotTok
                          , ptExpiresAt    = ctExpiresAt copilotTok
                          }
-  BL.writeFile path (encode persisted)
+  BL.writeFile tokenPath (encode persisted)
 
 -- | Initiate OAuth device flow
 initiateDeviceFlow :: CopilotAuth -> IO (Either AuthError DeviceCodeResponse)
@@ -214,11 +209,11 @@ initiateDeviceFlow auth = do
 
   case statusCode (responseStatus resp) of
     200  -> case eitherDecode (responseBody resp) of
-      Left err  -> pure $ Left $ AuthParseError $ T.pack err
+      Left err  -> pure $ Left $ AuthParseError $ toText err
       Right dcr -> do
         atomically $ writeTVar (caTokenState auth) (Authenticating dcr)
         pure $ Right dcr
-    code -> pure $ Left $ AuthNetworkError $ "HTTP " <> T.pack (show code)
+    code -> pure $ Left $ AuthNetworkError $ "HTTP " <> show code
 
 -- | Poll for token after user authorizes
 pollForToken :: CopilotAuth -> DeviceCodeResponse -> IO (Either AuthError CopilotToken)
@@ -276,9 +271,9 @@ requestOAuthToken auth deviceCode = do
         "access_denied" -> pure $ Left $ AuthDenied "User denied access"
         err -> pure $ Left $ AuthDenied err
       Left _         -> case eitherDecode (responseBody resp) of
-        Left err    -> pure $ Left $ AuthParseError $ T.pack err
+        Left err    -> pure $ Left $ AuthParseError $ toText err
         Right token -> pure $ Right token
-    code -> pure $ Left $ AuthNetworkError $ "HTTP " <> T.pack (show code)
+    code -> pure $ Left $ AuthNetworkError $ "HTTP " <> show code
 
 -- | Get Copilot API token from OAuth token
 getCopilotToken :: CopilotAuth -> Text -> IO (Either AuthError CopilotToken)
@@ -295,25 +290,22 @@ getCopilotToken auth oauthToken = do
 
   case statusCode (responseStatus resp) of
     200  -> case eitherDecode (responseBody resp) of
-      Left err  -> pure $ Left $ AuthParseError $ T.pack err
+      Left err  -> pure $ Left $ AuthParseError $ toText err
       Right ctr -> do
         now <- getCurrentTime
         let expiresAt
               = addUTCTime
-                (fromIntegral (ctrExpiresAt ctr) - realToFrac (utcTimeToPOSIXSeconds now))
+                (fromIntegral (ctrExpiresAt ctr) - utcTimeToPOSIXSeconds now)
                 now
         pure $ Right CopilotToken { ctToken = ctrToken ctr, ctExpiresAt = expiresAt }
     401  -> pure $ Left $ AuthDenied "Invalid OAuth token"
-    code -> pure $ Left $ AuthNetworkError $ "HTTP " <> T.pack (show code)
-  where
-    utcTimeToPOSIXSeconds :: UTCTime -> Double
-    utcTimeToPOSIXSeconds t = realToFrac $ diffUTCTime t (read "1970-01-01 00:00:00 UTC")
+    code -> pure $ Left $ AuthNetworkError $ "HTTP " <> show code
 
 -- | Ensure we have a valid token, refreshing if needed
 ensureValidToken :: CopilotAuth -> IO (Either AuthError CopilotToken)
 ensureValidToken auth = do
-  state <- readTVarIO (caTokenState auth)
-  case state of
+  tokenState <- readTVarIO (caTokenState auth)
+  case tokenState of
     NoToken -> do
       -- Try loading from disk first
       loadResult <- loadSavedToken auth
@@ -342,7 +334,7 @@ ensureValidToken auth = do
 -- | Get current token if available
 getToken :: CopilotAuth -> IO (Maybe CopilotToken)
 getToken auth = do
-  state <- readTVarIO (caTokenState auth)
-  case state of
+  tokenState <- readTVarIO (caTokenState auth)
+  case tokenState of
     Authenticated token -> pure $ Just token
     _ -> pure Nothing

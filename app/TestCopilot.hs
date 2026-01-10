@@ -1,18 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module TestCopilot where
+module TestCopilot (main) where
 
-import           Control.Monad            ( forM_ )
-
-import           Data.Maybe               ( fromMaybe )
-import           Data.Text                ( Text )
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as TIO
 
 import           Network.HTTP.Client      ( Manager )
 import           Network.HTTP.Client.TLS  ( newTlsManager )
-
-import           System.IO                ( hFlush, stdout )
 
 import           Telos.Core.Types         ( AssistantMessage(..), Message(..) )
 import           Telos.LLM.Copilot.Auth
@@ -34,7 +28,7 @@ main = do
   savedResult <- loadSavedToken auth
 
   case savedResult of
-    Right token -> do
+    Right _tok -> do
       putStrLn "Loaded saved token successfully!"
       runTests auth mgr
     Left _      -> do
@@ -59,8 +53,8 @@ main = do
           tokenResult <- pollForToken auth dcr
 
           case tokenResult of
-            Left err    -> putStrLn $ "Token error: " <> show err
-            Right token -> do
+            Left err   -> putStrLn $ "Token error: " <> show err
+            Right _tok -> do
               putStrLn "Authenticated successfully!"
               putStrLn "Token saved to ~/.config/telos/token.json"
               runTests auth mgr
@@ -80,7 +74,7 @@ runTests auth mgr = do
     Left err     -> TIO.putStrLn $ "Error listing models: " <> err
     Right models -> do
       putStrLn $ "Found " <> show (length (mrData models)) <> " models:"
-      forM_ (mrData models) $ \model -> do
+      for_ (mrData models) $ \model -> do
         TIO.putStrLn $ "  - " <> miId model
 
   putStrLn ""
@@ -93,7 +87,7 @@ runTests auth mgr = do
   case chatResult of
     Left err   -> TIO.putStrLn $ "Error: " <> err
     Right resp -> do
-      putStrLn $ "Response received!"
+      putStrLn "Response received!"
       putStrLn $ "Model: " <> T.unpack (chModel resp)
       case chChoices resp of
         []           -> putStrLn "No choices in response"

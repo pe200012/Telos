@@ -8,7 +8,7 @@ module Telos.Agent.Interrupt
   , removeInterruptHandler
   ) where
 
-import           Control.Concurrent.MVar ( MVar, isEmptyMVar, tryPutMVar, tryTakeMVar )
+import           Control.Concurrent.MVar ( isEmptyMVar )
 import           Control.Exception       ( bracket )
 
 import           System.Posix.Signals    ( Handler(Catch), installHandler, sigINT )
@@ -16,7 +16,7 @@ import           System.Posix.Signals    ( Handler(Catch), installHandler, sigIN
 import           Telos.Agent.Context     ( AgentContext(..) )
 
 -- | Opaque handle for installed interrupt handler
-newtype InterruptHandler = InterruptHandler { unHandler :: Handler }
+newtype InterruptHandler = InterruptHandler Handler
 
 -- | Check if interrupt has been signaled
 checkInterrupted :: AgentContext -> IO Bool
@@ -24,15 +24,11 @@ checkInterrupted ctx = not <$> isEmptyMVar (ctxInterrupt ctx)
 
 -- | Signal an interrupt (called by SIGINT handler)
 signalInterrupt :: AgentContext -> IO ()
-signalInterrupt ctx = do
-  _ <- tryPutMVar (ctxInterrupt ctx) ()
-  pure ()
+signalInterrupt ctx = void $ tryPutMVar (ctxInterrupt ctx) ()
 
 -- | Clear the interrupt signal (for reuse)
 clearInterrupt :: AgentContext -> IO ()
-clearInterrupt ctx = do
-  _ <- tryTakeMVar (ctxInterrupt ctx)
-  pure ()
+clearInterrupt ctx = void $ tryTakeMVar (ctxInterrupt ctx)
 
 -- | Install interrupt handler, returns previous handler
 installInterruptHandler :: AgentContext -> IO InterruptHandler
@@ -42,9 +38,7 @@ installInterruptHandler ctx = do
 
 -- | Remove interrupt handler, restore previous
 removeInterruptHandler :: InterruptHandler -> IO ()
-removeInterruptHandler (InterruptHandler prev) = do
-  _ <- installHandler sigINT prev Nothing
-  pure ()
+removeInterruptHandler (InterruptHandler prev) = void $ installHandler sigINT prev Nothing
 
 -- | Run an action with interrupt handling
 -- Installs SIGINT handler before, restores after

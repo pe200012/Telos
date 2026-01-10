@@ -14,8 +14,6 @@ module Telos.Effect.StreamOutput
   , flushOutput
   ) where
 
-import           Data.Text ( Text )
-
 import           Polysemy
 
 -- | Effect for streaming output during LLM response generation.

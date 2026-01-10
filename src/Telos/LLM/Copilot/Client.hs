@@ -22,19 +22,14 @@ module Telos.LLM.Copilot.Client
 
 import           Conduit
 
-import           Control.Exception           ( SomeException, try )
-import           Control.Monad               ( unless, when )
+import           Control.Exception           ( try )
 
 import           Data.Aeson
-import           Data.Aeson.Types            ( Parser )
 import qualified Data.ByteString             as BS
 import qualified Data.ByteString.Char8       as BS8
 import qualified Data.ByteString.Lazy        as BL
-import           Data.Text                   ( Text )
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as TE
-
-import           GHC.Generics                ( Generic )
 
 import           Network.HTTP.Client
 import           Network.HTTP.Client.Conduit ( bodyReaderSource )
@@ -48,8 +43,9 @@ import           Telos.LLM.Copilot.Auth      ( CopilotAuth, CopilotToken(..), en
 data CopilotConfig = CopilotConfig { ccModel :: Text, ccMaxTokens :: Maybe Int }
   deriving stock ( Show )
 
-defaultConfig :: CopilotConfig
-defaultConfig = CopilotConfig { ccModel = "gpt-4.1", ccMaxTokens = Nothing }
+-- | Unused but kept for API completeness
+_defaultConfig :: CopilotConfig
+_defaultConfig = CopilotConfig { ccModel = "gpt-4.1", ccMaxTokens = Nothing }
 
 -- | Copilot API client
 data CopilotClient
@@ -245,16 +241,9 @@ parseSSESource source = source .| linesC .| filterC isDataLine .| mapC extractDa
 -- | Split input into lines
 linesC :: ConduitT BS.ByteString BS.ByteString IO ()
 linesC = awaitForever $ \chunk -> do
-  leftover <- get
-  let combined         = maybe chunk (<> chunk) leftover
-      ( lines', rest ) = splitLines combined
+  let ( lines', _rest ) = splitLines chunk
   mapM_ yield lines'
-  unless (BS.null rest) $ put rest
   where
-    get           = pure Nothing  -- Simplified; in production use StateT
-
-    put _ = pure ()     -- Simplified
-
     splitLines bs
       = let
           parts = BS8.split '\n' bs
@@ -262,13 +251,13 @@ linesC = awaitForever $ \chunk -> do
           case parts of
             []    -> ( [], BS.empty )
             [ x ] -> ( [], x )
-            xs    -> ( init xs, last xs )
+            xs    -> ( maybe [] toList (viaNonEmpty init xs), fromMaybe BS.empty (viaNonEmpty last xs) )
 
 -- | Parse JSON chunks from SSE data
 parseChunks :: ConduitT BS.ByteString ChatResponse IO ()
 parseChunks
   = awaitForever $ \chunk -> unless (chunk == "[DONE]") $ case eitherDecodeStrict chunk of
-    Left _     -> pure ()  -- Skip parse errors
+    Left _     -> pass  -- Skip parse errors
     Right resp -> yield resp
 
 -- | Model information

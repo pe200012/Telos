@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module TestAgent where
+module TestAgent (main) where
 
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO

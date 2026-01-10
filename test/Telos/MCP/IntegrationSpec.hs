@@ -1,10 +1,7 @@
 module Telos.MCP.IntegrationSpec (spec) where
 
-import Data.Aeson (object, (.=))
-import Data.Maybe (isJust)
-import Test.Hspec
-
-import Telos.Core.Types (Tool(..))
+import           Data.Aeson              ( object, (.=) )
+import           Test.Hspec
 import Telos.MCP.Client
 import Telos.MCP.ServerManager
 import Telos.MCP.Types

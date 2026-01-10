@@ -6,13 +6,9 @@ module Telos.LLM.Copilot.Interpreter ( runLLMCopilot, CopilotEnv(..), newCopilot
 
 import           Conduit
 
-import           Control.Exception        ( SomeException, try )
-
-import           Data.Text                ( Text )
 import qualified Data.Text                as T
 
 import           Network.HTTP.Client      ( Manager )
-import           Network.HTTP.Client.TLS  ( newTlsManager )
 
 import           Polysemy
 

@@ -8,12 +8,8 @@ module Telos.Effect.Process
   , ProcessHandle(..)
   ) where
 
-import           Data.ByteString  ( ByteString )
-import           Data.Text        ( Text )
+import           Polysemy         ( makeSem )
 
-import           Polysemy         ( Sem, makeSem )
-
-import           System.IO        ( Handle )
 import qualified System.Process   as P
 
 import           Telos.Core.Error ( ProcessError )

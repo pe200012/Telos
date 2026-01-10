@@ -14,12 +14,8 @@ module Telos.MCP.JsonRpc
   ) where
 
 import           Data.Aeson
-import           Data.Aeson.Types     ( Parser )
-import           Data.ByteString.Lazy ( ByteString )
-import qualified Data.ByteString.Lazy as BL
-import           Data.Text            ( Text )
-
-import           GHC.Generics         ( Generic )
+import           Data.Aeson.Types          ( Parser )
+import qualified Data.ByteString.Lazy      as BL
 
 data RequestId = IntId Int | TextId Text
   deriving stock ( Eq, Show, Generic )
@@ -71,13 +67,13 @@ instance FromJSON JsonRpcResponse where
       then fail $ "Unsupported JSON-RPC version: " <> show version
       else JsonRpcResponse <$> o .:? "id" <*> o .:? "result" <*> o .:? "error"
 
-encodeRequest :: JsonRpcRequest -> ByteString
+encodeRequest :: JsonRpcRequest -> BL.ByteString
 encodeRequest = encode
 
-encodeNotification :: JsonRpcNotification -> ByteString
+encodeNotification :: JsonRpcNotification -> BL.ByteString
 encodeNotification = encode
 
-decodeResponse :: ByteString -> Either String JsonRpcResponse
+decodeResponse :: BL.ByteString -> Either String JsonRpcResponse
 decodeResponse = eitherDecode
 
 standardErrorCodes :: [ ( Int, Text ) ]
@@ -128,7 +124,7 @@ instance FromJSON JsonRpcRequest where
       then fail $ "Unsupported JSON-RPC version: " <> show version
       else JsonRpcRequest <$> o .: "id" <*> o .: "method" <*> o .:? "params"
 
-encodeResponse :: RequestId -> Either JsonRpcError Value -> ByteString
+encodeResponse :: RequestId -> Either JsonRpcError Value -> BL.ByteString
 encodeResponse rid (Left err)
   = encode
   $ object
@@ -139,5 +135,5 @@ encodeResponse rid (Left err)
 encodeResponse rid (Right result)
   = encode $ object [ "jsonrpc" .= ("2.0" :: Text), "id" .= rid, "result" .= result ]
 
-decodeMessage :: ByteString -> Either String JsonRpcMessage
+decodeMessage :: BL.ByteString -> Either String JsonRpcMessage
 decodeMessage = eitherDecode

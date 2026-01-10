@@ -1,10 +1,9 @@
 module Telos.MCP.ClientSpec (spec) where
 
-import Data.Maybe (isNothing)
-import Test.Hspec
+import           Test.Hspec
 
-import Telos.MCP.Client
-import Telos.MCP.Types
+import           Telos.MCP.Client
+import           Telos.MCP.Types
 
 spec :: Spec
 spec = do

@@ -12,16 +12,6 @@ module Telos.Agent.Context
   , resetIteration
   ) where
 
-import           Control.Concurrent.MVar ( MVar, newEmptyMVar )
-import           Control.Concurrent.STM  ( TVar
-                                         , atomically
-                                         , modifyTVar'
-                                         , newTVarIO
-                                         , readTVar
-                                         , readTVarIO
-                                         , writeTVar
-                                         )
-
 import           Telos.Agent.Config      ( AgentConfig )
 import           Telos.Core.Types        ( Message, Tool )
 

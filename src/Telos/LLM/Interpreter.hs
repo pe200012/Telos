@@ -8,10 +8,7 @@ module Telos.LLM.Interpreter ( runLLMWithCopilot ) where
 
 import           Conduit                  ( (.|), ConduitT, awaitForever, yield )
 
-import           Data.Maybe               ( fromMaybe, listToMaybe )
-import           Data.Text                ( Text )
-
-import           Polysemy                 ( Embed, InterpreterFor, Member, Sem, embed, interpret )
+import           Polysemy                 ( Embed, InterpreterFor, Member, embed, interpret )
 
 import           Telos.Core.Error         ( LLMError(..) )
 import           Telos.Core.Types         ( AssistantMessage
@@ -117,5 +114,5 @@ toolCallChunkToEvents tc = case tccFunction tc of
       startEvent ++ deltaEvent
 
 -- | Create an empty conduit that immediately returns a result
-emptyConduit :: Monad m => a -> ConduitT i o m a
+emptyConduit :: a -> ConduitT i o m a
 emptyConduit = pure

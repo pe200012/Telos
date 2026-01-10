@@ -11,11 +11,8 @@ module Telos.Effect.MCP
   ) where
 
 import           Data.Aeson       ( Value )
-import           Data.Text        ( Text )
 
-import           GHC.Generics     ( Generic )
-
-import           Polysemy         ( Sem, makeSem )
+import           Polysemy         ( makeSem )
 
 import           Telos.Core.Error ( MCPError )
 import           Telos.Core.Types ( Tool )

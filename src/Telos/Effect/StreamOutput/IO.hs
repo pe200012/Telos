@@ -8,12 +8,9 @@ module Telos.Effect.StreamOutput.IO
   , runStreamOutputSilent
   ) where
 
-import           Data.Text                 ( Text )
 import qualified Data.Text.IO              as TIO
 
 import           Polysemy
-
-import           System.IO                 ( hFlush, stdout )
 
 import           Telos.Effect.StreamOutput
 
@@ -33,14 +30,14 @@ runStreamOutputIO = interpret $ \case
   OutputNewline -> embed $ do
     TIO.putStrLn ""
     hFlush stdout
-  FlushOutput -> embed $ hFlush stdout
+  FlushOutput -> embed @IO $ hFlush stdout
 
 -- | Run StreamOutput silently (discard all output).
 -- Useful for testing or when output is not needed.
 runStreamOutputSilent :: Sem (StreamOutput ': r) a -> Sem r a
 runStreamOutputSilent = interpret $ \case
-  OutputChunk _     -> pure ()
-  OutputToolStart _ -> pure ()
-  OutputToolEnd _   -> pure ()
-  OutputNewline     -> pure ()
-  FlushOutput       -> pure ()
+  OutputChunk _     -> pass
+  OutputToolStart _ -> pass
+  OutputToolEnd _   -> pass
+  OutputNewline     -> pass
+  FlushOutput       -> pass
