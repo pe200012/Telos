@@ -1,5 +1,12 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Telos.MCP.Transport.StdIO
   ( StdIOHandle(..)
+  , shProcess
+  , shStdin
+  , shStdout
+  , shStderr
+  , shLock
   , spawnMCPProcess
   , sendMessage
   , receiveMessage
@@ -15,6 +22,8 @@ import           Data.Aeson                 ( FromJSON, ToJSON, eitherDecode, en
 import qualified Data.ByteString.Lazy       as BL
 import qualified Data.ByteString.Lazy.Char8 as BL8
 
+import           Lens.Micro.TH              ( makeLenses )
+
 import           System.IO                  ( hClose, hGetLine )
 import           System.Process             ( CreateProcess(..)
                                             , ProcessHandle
@@ -28,13 +37,15 @@ import           System.Process             ( CreateProcess(..)
 import           Telos.Core.Error           ( MCPError(..) )
 import           Telos.MCP.JsonRpc          ( JsonRpcMessage, decodeMessage )
 
-data StdIOHandle
-  = StdIOHandle { shProcess :: ProcessHandle
-                , shStdin   :: Handle
-                , shStdout  :: Handle
-                , shStderr  :: Handle
-                , shLock    :: MVar ()
-                }
+data StdIOHandle = StdIOHandle
+  { _shProcess :: ProcessHandle
+  , _shStdin   :: Handle
+  , _shStdout  :: Handle
+  , _shStderr  :: Handle
+  , _shLock    :: MVar ()
+  }
+
+makeLenses ''StdIOHandle
 
 spawnMCPProcess :: FilePath
                 -> [ String ]
@@ -42,13 +53,13 @@ spawnMCPProcess :: FilePath
                 -> Maybe [ ( String, String ) ]
                 -> IO (Either MCPError StdIOHandle)
 spawnMCPProcess cmd args workDir env' = do
-  let cp
-        = (proc cmd args) { std_in  = CreatePipe
-                          , std_out = CreatePipe
-                          , std_err = CreatePipe
-                          , cwd     = workDir
-                          , env     = env'
-                          }
+  let cp = (proc cmd args)
+        { std_in  = CreatePipe
+        , std_out = CreatePipe
+        , std_err = CreatePipe
+        , cwd     = workDir
+        , env     = env'
+        }
 
   result <- try $ createProcess cp
 
@@ -61,17 +72,20 @@ spawnMCPProcess cmd args workDir env' = do
 
       lock <- newMVar ()
 
-      pure
-        $ Right
-          StdIOHandle
-          { shProcess = ph, shStdin = stdinH, shStdout = stdoutH, shStderr = stderrH, shLock = lock }
+      pure $ Right StdIOHandle
+        { _shProcess = ph
+        , _shStdin   = stdinH
+        , _shStdout  = stdoutH
+        , _shStderr  = stderrH
+        , _shLock    = lock
+        }
     Right _ -> pure $ Left $ MCPConnectionFailed "Failed to create process pipes"
 
 sendMessage :: (ToJSON a) => StdIOHandle -> a -> IO (Either MCPError ())
 sendMessage handle msg = do
-  result <- try $ withMVar (shLock handle) $ \_ -> do
-    BL8.hPutStrLn (shStdin handle) (encode msg)
-    hFlush (shStdin handle)
+  result <- try $ withMVar (_shLock handle) $ \_ -> do
+    BL8.hPutStrLn (_shStdin handle) (encode msg)
+    hFlush (_shStdin handle)
 
   case result of
     Left (e :: SomeException) -> pure $ Left $ MCPConnectionFailed $ show e
@@ -79,7 +93,7 @@ sendMessage handle msg = do
 
 receiveMessage :: (FromJSON a) => StdIOHandle -> IO (Either MCPError a)
 receiveMessage handle = do
-  result <- try $ hGetLine (shStdout handle)
+  result <- try $ hGetLine (_shStdout handle)
 
   case result of
     Left (e :: SomeException) -> pure $ Left $ MCPConnectionFailed $ show e
@@ -89,27 +103,25 @@ receiveMessage handle = do
 
 closeHandle :: StdIOHandle -> IO ()
 closeHandle handle = do
-  _ <- try @SomeException $ hClose (shStdin handle)
-  _ <- try @SomeException $ hClose (shStdout handle)
-  _ <- try @SomeException $ hClose (shStderr handle)
-  _ <- try @SomeException $ terminateProcess (shProcess handle)
-  _ <- try @SomeException $ waitForProcess (shProcess handle)
+  _ <- try @SomeException $ hClose (_shStdin handle)
+  _ <- try @SomeException $ hClose (_shStdout handle)
+  _ <- try @SomeException $ hClose (_shStderr handle)
+  _ <- try @SomeException $ terminateProcess (_shProcess handle)
+  _ <- try @SomeException $ waitForProcess (_shProcess handle)
   pass
 
--- | Receive and parse as JsonRpcMessage (unified type)
 receiveRawMessage :: StdIOHandle -> IO (Either String JsonRpcMessage)
 receiveRawMessage handle = do
-  result <- try $ hGetLine (shStdout handle)
+  result <- try $ hGetLine (_shStdout handle)
   case result of
     Left (e :: SomeException) -> pure $ Left $ show e
     Right line -> pure $ decodeMessage (BL8.pack line)
 
--- | Send raw bytes directly
 sendRawBytes :: StdIOHandle -> BL.ByteString -> IO (Either MCPError ())
 sendRawBytes handle bytes = do
-  result <- try $ withMVar (shLock handle) $ \_ -> do
-    BL8.hPutStrLn (shStdin handle) bytes
-    hFlush (shStdin handle)
+  result <- try $ withMVar (_shLock handle) $ \_ -> do
+    BL8.hPutStrLn (_shStdin handle) bytes
+    hFlush (_shStdin handle)
   case result of
     Left (e :: SomeException) -> pure $ Left $ MCPConnectionFailed $ show e
     Right () -> pure $ Right ()

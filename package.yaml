@@ -58,6 +58,10 @@ dependencies:
 - exceptions
 # Unix (for signal handling)
 - unix
+# Lenses
+- microlens
+- microlens-th
+- microlens-pro
 
 default-extensions:
 - BangPatterns

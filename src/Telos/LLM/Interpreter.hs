@@ -8,23 +8,36 @@ module Telos.LLM.Interpreter ( runLLMWithCopilot ) where
 
 import           Conduit                  ( (.|), ConduitT, awaitForever, yield )
 
+import           Lens.Micro               ( (.~), (^.) )
+
 import           Polysemy                 ( Embed, InterpreterFor, Member, embed, interpret )
 
 import           Telos.Core.Error         ( LLMError(..) )
 import           Telos.Core.Types         ( AssistantMessage
-                                          , PartialMessage(..)
-                                          , ProviderInfo(..)
+                                          , makePartialMessage
+                                          , makeProviderInfo
+                                          , piMaxTokens
                                           , StreamEvent(..)
                                           , StreamResult(..)
                                           )
 import           Telos.Effect.LLM         ( LLM(..) )
 import           Telos.LLM.Copilot.Client ( ChatResponse(..)
-                                          , Choice(..)
                                           , CopilotClient(..)
-                                          , CopilotConfig(..)
                                           , Delta(..)
-                                          , FunctionChunk(..)
                                           , ToolCallChunk(..)
+                                          , chChoices
+                                          , chDelta
+                                          , chMessage
+                                          , clConfig
+                                          , ccModel
+                                          , ccMaxTokens
+                                          , dContent
+                                          , dToolCalls
+                                          , fcArguments
+                                          , fcName
+                                          , tccFunction
+                                          , tccId
+                                          , tccIndex
                                           , sendChatRequest
                                           , sendChatRequestStream
                                           )
@@ -47,17 +60,14 @@ runLLMWithCopilot client = interpret $ \case
       Right source -> streamToEvents source
 
   GetProviderInfo           -> pure
-    ProviderInfo { piName          = "GitHub Copilot"
-                 , piModel         = ccModel (clConfig client)
-                 , piSupportsTools = True
-                 , piMaxTokens     = ccMaxTokens (clConfig client)
-                 }
+    $ makeProviderInfo "GitHub Copilot" (client ^. clConfig . ccModel)
+      & piMaxTokens .~ (client ^. clConfig . ccMaxTokens)
 
 -- | Extract assistant message from chat response
 extractAssistantMessage :: ChatResponse -> Maybe AssistantMessage
 extractAssistantMessage resp = do
-  choice <- listToMaybe (chChoices resp)
-  chMessage choice
+  choice <- listToMaybe (resp ^. chChoices)
+  choice ^. chMessage
 
 -- | Convert ChatResponse stream to StreamEvent stream.
 -- The conduit yields StreamEvents and returns a dummy StreamResult.
@@ -67,7 +77,7 @@ streamToEvents :: ConduitT () ChatResponse IO () -> ConduitT () StreamEvent IO S
 streamToEvents source = do
   source .| convertEvents
   -- Return a placeholder - the consumer will build the final message from accumulated events
-  pure $ StreamInterrupted (PartialMessage "" [])
+  pure $ StreamInterrupted (makePartialMessage "" [])
   where
     convertEvents :: ConduitT ChatResponse StreamEvent IO ()
     convertEvents = awaitForever $ \resp -> case chatResponseToStreamEvents resp of
@@ -77,22 +87,22 @@ streamToEvents source = do
 -- | Convert a single ChatResponse to zero or more StreamEvents.
 -- A single response chunk can contain both content and tool call updates.
 chatResponseToStreamEvents :: ChatResponse -> [ StreamEvent ]
-chatResponseToStreamEvents resp = case listToMaybe (chChoices resp) of
+chatResponseToStreamEvents resp = case listToMaybe (resp ^. chChoices) of
   Nothing     -> []
-  Just choice -> case chDelta choice of
+  Just choice -> case choice ^. chDelta of
     Nothing    -> []
     Just delta -> contentEvent delta ++ toolCallEvents delta
 
 -- | Extract content delta event if present
 contentEvent :: Delta -> [ StreamEvent ]
-contentEvent delta = case dContent delta of
+contentEvent delta = case delta ^. dContent of
   Just content
     | content /= "" -> [ ContentDelta content ]
   _ -> []
 
 -- | Extract tool call events from delta
 toolCallEvents :: Delta -> [ StreamEvent ]
-toolCallEvents delta = case dToolCalls delta of
+toolCallEvents delta = case delta ^. dToolCalls of
   Nothing  -> []
   Just tcs -> concatMap toolCallChunkToEvents tcs
 
@@ -100,15 +110,15 @@ toolCallEvents delta = case dToolCalls delta of
 -- First chunk for an index contains id and name (ToolCallStart).
 -- Subsequent chunks contain argument fragments (ToolCallDelta).
 toolCallChunkToEvents :: ToolCallChunk -> [ StreamEvent ]
-toolCallChunkToEvents tc = case tccFunction tc of
+toolCallChunkToEvents tc = case tc ^. tccFunction of
   Nothing -> []
   Just fc -> let
-      startEvent = case ( tccId tc, fcName fc ) of
-        ( Just tcId, Just name ) -> [ ToolCallStart (tccIndex tc) tcId name ]
+      startEvent = case ( tc ^. tccId, fc ^. fcName ) of
+        ( Just tcId, Just name ) -> [ ToolCallStart (tc ^. tccIndex) tcId name ]
         _ -> []
-      deltaEvent = case fcArguments fc of
+      deltaEvent = case fc ^. fcArguments of
         Just args
-          | args /= "" -> [ ToolCallDelta (tccIndex tc) args ]
+          | args /= "" -> [ ToolCallDelta (tc ^. tccIndex) args ]
         _         -> []
     in 
       startEvent ++ deltaEvent

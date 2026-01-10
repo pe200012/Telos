@@ -1,34 +1,67 @@
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
-module Telos.Agent.Config ( AgentConfig(..), MCPServerConfig(..), defaultAgentConfig ) where
+module Telos.Agent.Config
+  ( AgentConfig
+  , makeAgentConfig
+  , acMaxIterations
+  , acSystemPrompt
+  , acModel
+  , acMCPServers
+  , acStreamingEnabled
+  , MCPServerConfig
+  , makeMCPServerConfig
+  , mscName
+  , mscCommand
+  , mscArgs
+  , mscEnv
+  , defaultAgentConfig
+  ) where
 
--- | Configuration for an MCP server connection
-data MCPServerConfig
-  = MCPServerConfig { mscName    :: Text            -- ^ Unique identifier for this server
-                    , mscCommand :: FilePath        -- ^ Command to spawn the server
-                    , mscArgs    :: [ String ]        -- ^ Command line arguments
-                    , mscEnv     :: [ ( String, String ) ]  -- ^ Additional environment variables
-                    }
-  deriving stock ( Eq, Show, Generic )
+import           Lens.Micro.TH ( makeLenses )
 
--- | Configuration for the agent
-data AgentConfig
-  = AgentConfig
-  { acMaxIterations :: Int                -- ^ Maximum tool call iterations (default 20)
-  , acSystemPrompt :: Maybe Text         -- ^ Optional system prompt
-  , acModel :: Text               -- ^ Model identifier (e.g. "gpt-4")
-  , acMCPServers :: [ MCPServerConfig ]  -- ^ MCP servers to connect to
-  , acStreamingEnabled :: Bool               -- ^ Enable streaming responses (default True)
+data MCPServerConfig = MCPServerConfig
+  { _mscName    :: Text
+  , _mscCommand :: FilePath
+  , _mscArgs    :: [ String ]
+  , _mscEnv     :: [ ( String, String ) ]
   }
   deriving stock ( Eq, Show, Generic )
 
--- | Default agent configuration
+makeLenses ''MCPServerConfig
+
+makeMCPServerConfig :: Text -> FilePath -> [ String ] -> MCPServerConfig
+makeMCPServerConfig name cmd args = MCPServerConfig
+  { _mscName = name
+  , _mscCommand = cmd
+  , _mscArgs = args
+  , _mscEnv = []
+  }
+
+data AgentConfig = AgentConfig
+  { _acMaxIterations    :: Int
+  , _acSystemPrompt     :: Maybe Text
+  , _acModel            :: Text
+  , _acMCPServers       :: [ MCPServerConfig ]
+  , _acStreamingEnabled :: Bool
+  }
+  deriving stock ( Eq, Show, Generic )
+
+makeLenses ''AgentConfig
+
+makeAgentConfig :: Text -> AgentConfig
+makeAgentConfig model = AgentConfig
+  { _acMaxIterations = 20
+  , _acSystemPrompt = Nothing
+  , _acModel = model
+  , _acMCPServers = []
+  , _acStreamingEnabled = True
+  }
+
 defaultAgentConfig :: AgentConfig
-defaultAgentConfig
-  = AgentConfig { acMaxIterations = 20
-                , acSystemPrompt = Nothing
-                , acModel = "gpt-4"
-                , acMCPServers = []
-                , acStreamingEnabled = True
-                }
+defaultAgentConfig = AgentConfig
+  { _acMaxIterations    = 20
+  , _acSystemPrompt     = Nothing
+  , _acModel            = "gpt-4"
+  , _acMCPServers       = []
+  , _acStreamingEnabled = True
+  }

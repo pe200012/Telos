@@ -9,13 +9,22 @@ import           Control.Exception            ( bracket )
 import qualified Data.Text                    as T
 import qualified Data.Text.IO                 as TIO
 
+import           Lens.Micro                   ( (.~), (^.) )
+
 import           Network.HTTP.Client          ( newManager )
 import           Network.HTTP.Client.TLS      ( tlsManagerSettings )
 
 import           Polysemy                     ( runM )
 import           Polysemy.Error               ( runError )
 
-import           Telos.Agent.Config           ( AgentConfig(..), MCPServerConfig(..) )
+import           Telos.Agent.Config           ( AgentConfig
+                                              , acStreamingEnabled
+                                              , acMCPServers
+                                              , mscName
+                                              , mscCommand
+                                              , mscArgs
+                                              , mscEnv
+                                              )
 import           Telos.Agent.Context          ( AgentContext
                                               , ctxConfig
                                               , newAgentContext
@@ -37,13 +46,15 @@ import           Telos.LLM.Copilot.Client     ( CopilotClient
 import           Telos.LLM.Interpreter        ( runLLMWithCopilot )
 import           Telos.MCP.Interpreter        ( runMCPWithManager )
 import           Telos.MCP.ServerManager      ( ServerManager
-                                              , ToolWithSource(..)
+                                              , twsTool
                                               , addServer
                                               , aggregateTools
                                               , newServerManager
                                               , shutdownAll
                                               )
-import           Telos.MCP.Types              ( ServerConfig(..) )
+import           Telos.MCP.Types              ( makeServerConfig
+                                              , scEnv
+                                              )
 
 data AppConfig = AppConfig { appAgentConfig :: AgentConfig, appCopilotConfig :: CopilotConfig }
 
@@ -66,22 +77,15 @@ runApp config = do
 
 initializeTools :: AgentContext -> ServerManager -> IO ()
 initializeTools ctx manager = do
-  let servers = acMCPServers (ctxConfig ctx)
+  let servers = ctx ^. ctxConfig . acMCPServers
   forM_ servers $ \serverCfg -> do
-    let name      = mscName serverCfg
-        cmd       = mscCommand serverCfg
-        args      = mscArgs serverCfg
-        env       = mscEnv serverCfg
+    let name      = serverCfg ^. mscName
+        cmd       = serverCfg ^. mscCommand
+        args      = serverCfg ^. mscArgs
+        env       = serverCfg ^. mscEnv
         srvConfig
-          = ServerConfig
-          { scName    = name
-          , scCommand = cmd
-          , scArgs    = args
-          , scEnv     = if null env
-              then Nothing
-              else Just env
-          , scWorkDir = Nothing
-          }
+          = makeServerConfig name cmd args
+          & scEnv .~ (if null env then Nothing else Just env)
     TIO.putStrLn $ "Connecting to MCP server: " <> name
     result <- addServer manager srvConfig
     case result of
@@ -96,7 +100,7 @@ refreshTools ctx manager = do
   case result of
     Left err -> TIO.putStrLn $ "Failed to list tools: " <> T.pack (show err)
     Right toolsWithSource -> do
-      let tools = map twsTool toolsWithSource
+      let tools = map (^. twsTool) toolsWithSource
       registerTools ctx tools
       TIO.putStrLn $ "Registered " <> T.pack (show $ length tools) <> " tools"
 
@@ -108,7 +112,7 @@ repl ctx client manager = do
   unless (T.null input || input == "exit" || input == "quit") $ do
     clearInterrupt ctx
     -- Use streaming if enabled in config
-    let streamingEnabled = acStreamingEnabled (ctxConfig ctx)
+    let streamingEnabled = ctx ^. ctxConfig . acStreamingEnabled
     result <- if streamingEnabled
       then runAgentOnceStreaming ctx client manager input
       else runAgentOnce ctx client manager input

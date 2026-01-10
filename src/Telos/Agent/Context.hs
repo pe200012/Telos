@@ -1,5 +1,12 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Telos.Agent.Context
-  ( AgentContext(..)
+  ( AgentContext
+  , ctxHistory
+  , ctxTools
+  , ctxInterrupt
+  , ctxIteration
+  , ctxConfig
   , newAgentContext
   , addMessage
   , getHistory
@@ -12,67 +19,60 @@ module Telos.Agent.Context
   , resetIteration
   ) where
 
-import           Telos.Agent.Config      ( AgentConfig )
-import           Telos.Core.Types        ( Message, Tool )
+import           Lens.Micro.TH       ( makeLenses )
 
--- | Agent execution context with mutable state
-data AgentContext
-  = AgentContext { ctxHistory   :: TVar [ Message ]   -- ^ Conversation history (newest last)
-                 , ctxTools     :: TVar [ Tool ]      -- ^ Available tools from MCP servers
-                 , ctxInterrupt :: MVar ()          -- ^ Interrupt signal (Ctrl+C)
-                 , ctxIteration :: TVar Int         -- ^ Current iteration count
-                 , ctxConfig    :: AgentConfig      -- ^ Agent configuration
-                 }
+import           Telos.Agent.Config  ( AgentConfig )
+import           Telos.Core.Types    ( Message, Tool )
 
--- | Create a new agent context
+data AgentContext = AgentContext
+  { _ctxHistory   :: TVar [ Message ]
+  , _ctxTools     :: TVar [ Tool ]
+  , _ctxInterrupt :: MVar ()
+  , _ctxIteration :: TVar Int
+  , _ctxConfig    :: AgentConfig
+  }
+
+makeLenses ''AgentContext
+
 newAgentContext :: AgentConfig -> IO AgentContext
 newAgentContext cfg = do
   history <- newTVarIO []
   tools <- newTVarIO []
   interrupt <- newEmptyMVar
   iteration <- newTVarIO 0
-  pure
-    AgentContext { ctxHistory   = history
-                 , ctxTools     = tools
-                 , ctxInterrupt = interrupt
-                 , ctxIteration = iteration
-                 , ctxConfig    = cfg
-                 }
+  pure AgentContext
+    { _ctxHistory   = history
+    , _ctxTools     = tools
+    , _ctxInterrupt = interrupt
+    , _ctxIteration = iteration
+    , _ctxConfig    = cfg
+    }
 
--- | Add a message to the conversation history
 addMessage :: AgentContext -> Message -> IO ()
-addMessage ctx msg = atomically $ modifyTVar' (ctxHistory ctx) (++ [ msg ])
+addMessage ctx msg = atomically $ modifyTVar' (_ctxHistory ctx) (++ [ msg ])
 
--- | Get the current conversation history
 getHistory :: AgentContext -> IO [ Message ]
-getHistory ctx = readTVarIO (ctxHistory ctx)
+getHistory ctx = readTVarIO (_ctxHistory ctx)
 
--- | Set the conversation history (replace entirely)
 setHistory :: AgentContext -> [ Message ] -> IO ()
-setHistory ctx msgs = atomically $ writeTVar (ctxHistory ctx) msgs
+setHistory ctx msgs = atomically $ writeTVar (_ctxHistory ctx) msgs
 
--- | Clear the conversation history
 clearHistory :: AgentContext -> IO ()
-clearHistory ctx = atomically $ writeTVar (ctxHistory ctx) []
+clearHistory ctx = atomically $ writeTVar (_ctxHistory ctx) []
 
--- | Get available tools
 getTools :: AgentContext -> IO [ Tool ]
-getTools ctx = readTVarIO (ctxTools ctx)
+getTools ctx = readTVarIO (_ctxTools ctx)
 
--- | Register tools (replaces existing)
 registerTools :: AgentContext -> [ Tool ] -> IO ()
-registerTools ctx tools = atomically $ writeTVar (ctxTools ctx) tools
+registerTools ctx tools = atomically $ writeTVar (_ctxTools ctx) tools
 
--- | Get current iteration count
 getIterationCount :: AgentContext -> IO Int
-getIterationCount ctx = readTVarIO (ctxIteration ctx)
+getIterationCount ctx = readTVarIO (_ctxIteration ctx)
 
--- | Increment iteration count, returns new value
 incrementIteration :: AgentContext -> IO Int
 incrementIteration ctx = atomically $ do
-  modifyTVar' (ctxIteration ctx) (+ 1)
-  readTVar (ctxIteration ctx)
+  modifyTVar' (_ctxIteration ctx) (+ 1)
+  readTVar (_ctxIteration ctx)
 
--- | Reset iteration count to 0
 resetIteration :: AgentContext -> IO ()
-resetIteration ctx = atomically $ writeTVar (ctxIteration ctx) 0
+resetIteration ctx = atomically $ writeTVar (_ctxIteration ctx) 0

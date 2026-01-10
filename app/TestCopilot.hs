@@ -5,10 +5,12 @@ module TestCopilot (main) where
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as TIO
 
+import           Lens.Micro               ( (^.), non )
+
 import           Network.HTTP.Client      ( Manager )
 import           Network.HTTP.Client.TLS  ( newTlsManager )
 
-import           Telos.Core.Types         ( AssistantMessage(..), Message(..) )
+import           Telos.Core.Types         ( amContent, Message(UserMessage) )
 import           Telos.LLM.Copilot.Auth
 import           Telos.LLM.Copilot.Client
 
@@ -41,10 +43,10 @@ main = do
           putStrLn ""
           putStrLn "=========================================="
           putStrLn "Please visit: "
-          TIO.putStrLn $ dcrVerificationUri dcr
+          TIO.putStrLn $ dcr ^. dcrVerificationUri
           putStrLn ""
           putStrLn "And enter code: "
-          TIO.putStrLn $ dcrUserCode dcr
+          TIO.putStrLn $ dcr ^. dcrUserCode
           putStrLn "=========================================="
           putStrLn ""
           putStrLn "Waiting for authorization..."
@@ -64,7 +66,7 @@ runTests auth mgr = do
   putStrLn ""
 
   -- Create client with grok-code-fast-1 model
-  let config = CopilotConfig { ccModel = "grok-code-fast-1", ccMaxTokens = Just 1024 }
+  let config = CopilotConfig { _ccModel = "grok-code-fast-1", _ccMaxTokens = Just 1024 }
   let client = newCopilotClient auth mgr config
 
   -- Test 1: List models
@@ -73,9 +75,9 @@ runTests auth mgr = do
   case modelsResult of
     Left err     -> TIO.putStrLn $ "Error listing models: " <> err
     Right models -> do
-      putStrLn $ "Found " <> show (length (mrData models)) <> " models:"
-      for_ (mrData models) $ \model -> do
-        TIO.putStrLn $ "  - " <> miId model
+      putStrLn $ "Found " <> show (length (models ^. mrData)) <> " models:"
+      for_ (models ^. mrData) $ \model -> do
+        TIO.putStrLn $ "  - " <> (model ^. miId)
 
   putStrLn ""
 
@@ -88,14 +90,14 @@ runTests auth mgr = do
     Left err   -> TIO.putStrLn $ "Error: " <> err
     Right resp -> do
       putStrLn "Response received!"
-      putStrLn $ "Model: " <> T.unpack (chModel resp)
-      case chChoices resp of
+      putStrLn $ "Model: " <> T.unpack (resp ^. chModel)
+      case resp ^. chChoices of
         []           -> putStrLn "No choices in response"
-        (choice : _) -> case chMessage choice of
+        (choice : _) -> case choice ^. chMessage of
           Nothing  -> putStrLn "No message in choice"
           Just msg -> do
             putStrLn "Assistant:"
-            TIO.putStrLn $ fromMaybe "(no content)" (amContent msg)
+            TIO.putStrLn $ msg ^. amContent . non "(no content)"
 
   putStrLn ""
   putStrLn "=== Test Complete ==="

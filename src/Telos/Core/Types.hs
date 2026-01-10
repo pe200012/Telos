@@ -1,26 +1,65 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Telos.Core.Types
   ( Role(..)
   , Message(..)
-  , ToolCall(..)
-  , Tool(..)
-  , StreamEvent(..)
+  , ToolCall
+  , makeToolCall
+  , tcId
+  , tcName
+  , tcArguments
+  , Tool
+  , makeTool
+  , toolName
+  , toolDescription
+  , toolInputSchema
+  , StreamEvent(ContentDelta, ToolCallStart, ToolCallDelta, Ping)
+  , tcsIndex
+  , tcsId
+  , tcsName
+  , tcdIndex
+  , tcdArguments
   , StreamResult(..)
-  , PartialMessage(..)
-  , PartialToolCall(..)
-  , AssistantMessage(..)
-  , ProviderInfo(..)
+  , PartialMessage
+  , makePartialMessage
+  , pmContentSoFar
+  , pmToolCallsSoFar
+  , PartialToolCall
+  , makePartialToolCall
+  , ptcId
+  , ptcName
+  , ptcArgumentsSoFar
+  , AssistantMessage
+  , makeAssistantMessage
+  , amContent
+  , amToolCalls
+  , ProviderInfo
+  , makeProviderInfo
+  , piName
+  , piModel
+  , piSupportsTools
+  , piMaxTokens
+  , umContent
+  , smContent
+  , trmToolCallId
+  , trmToolName
+  , trmResult
+  , trmIsError
   ) where
 
-import           Data.Aeson   ( (.:)
-                              , (.:?)
-                              , (.=)
-                              , FromJSON(..)
-                              , ToJSON(..)
-                              , Value
-                              , object
-                              , withObject
-                              , withText
-                              )
+import           Data.Aeson          ( (.:)
+                                     , (.:?)
+                                     , (.=)
+                                     , FromJSON(..)
+                                     , ToJSON(..)
+                                     , Value
+                                     , object
+                                     , withObject
+                                     , withText
+                                     )
+
+import           Lens.Micro          ( (^.), non )
+import           Lens.Micro.TH       ( makeLenses )
 
 data Role = User | Assistant | System | ToolRole
   deriving stock ( Eq, Show, Generic )
@@ -40,15 +79,31 @@ instance FromJSON Role where
     "tool"      -> pure ToolRole
     other       -> fail $ "Unknown role: " <> show other
 
-data ToolCall = ToolCall { tcId :: Text, tcName :: Text, tcArguments :: Value }
+data ToolCall = ToolCall
+  { _tcId        :: Text
+  , _tcName      :: Text
+  , _tcArguments :: Value
+  }
   deriving stock ( Eq, Show, Generic )
+
+makeLenses ''ToolCall
+
+makeToolCall :: Text -- ^ id
+             -> Text -- ^ name
+             -> Value -- ^ arguments
+             -> ToolCall
+makeToolCall id' name args =
+  ToolCall { _tcId        = id'
+           , _tcName      = name
+           , _tcArguments = args
+           }
 
 instance ToJSON ToolCall where
   toJSON tc
     = object
-      [ "id" .= tcId tc
+      [ "id" .= (tc ^. tcId)
       , "type" .= ("function" :: Text)
-      , "function" .= object [ "name" .= tcName tc, "arguments" .= tcArguments tc ]
+      , "function" .= object [ "name" .= (tc ^. tcName), "arguments" .= (tc ^. tcArguments) ]
       ]
 
 instance FromJSON ToolCall where
@@ -57,10 +112,23 @@ instance FromJSON ToolCall where
     fn <- o .: "function"
     tcName' <- fn .: "name"
     tcArguments' <- fn .: "arguments"
-    pure ToolCall { tcId = tcId', tcName = tcName', tcArguments = tcArguments' }
+    pure ToolCall { _tcId = tcId', _tcName = tcName', _tcArguments = tcArguments' }
 
-data Tool = Tool { toolName :: Text, toolDescription :: Maybe Text, toolInputSchema :: Value }
+data Tool = Tool
+  { _toolName        :: Text
+  , _toolDescription :: Maybe Text
+  , _toolInputSchema :: Value
+  }
   deriving stock ( Eq, Show, Generic )
+
+makeLenses ''Tool
+
+makeTool :: Text -> Value -> Tool
+makeTool name schema = Tool
+  { _toolName = name
+  , _toolDescription = Nothing
+  , _toolInputSchema = schema
+  }
 
 instance ToJSON Tool where
   toJSON t
@@ -68,9 +136,9 @@ instance ToJSON Tool where
       [ "type" .= ("function" :: Text)
       , "function"
         .= object
-          [ "name" .= toolName t
-          , "description" .= toolDescription t
-          , "parameters" .= toolInputSchema t
+          [ "name" .= (t ^. toolName)
+          , "description" .= (t ^. toolDescription)
+          , "parameters" .= (t ^. toolInputSchema)
           ]
       ]
 
@@ -81,38 +149,55 @@ instance FromJSON Tool where
     toolDescription' <- fn .:? "description"
     toolInputSchema' <- fn .: "parameters"
     pure
-      Tool { toolName        = toolName'
-           , toolDescription = toolDescription'
-           , toolInputSchema = toolInputSchema'
+      Tool { _toolName        = toolName'
+           , _toolDescription = toolDescription'
+           , _toolInputSchema = toolInputSchema'
            }
 
-data AssistantMessage = AssistantMessage { amContent :: Maybe Text, amToolCalls :: [ ToolCall ] }
+data AssistantMessage = AssistantMessage
+  { _amContent   :: Maybe Text
+  , _amToolCalls :: [ ToolCall ]
+  }
   deriving stock ( Eq, Show, Generic )
+
+makeLenses ''AssistantMessage
+
+makeAssistantMessage :: Maybe Text -> [ToolCall] -> AssistantMessage
+makeAssistantMessage content tcs = AssistantMessage
+  { _amContent = content
+  , _amToolCalls = tcs
+  }
 
 instance ToJSON AssistantMessage where
   toJSON am
     = object
       [ "role" .= Assistant
-      , "content" .= amContent am
+      , "content" .= (am ^. amContent)
       , "tool_calls"
-        .= if null (amToolCalls am)
+        .= if null (am ^. amToolCalls)
           then Nothing
-          else Just (amToolCalls am)
+          else Just (am ^. amToolCalls)
       ]
 
 instance FromJSON AssistantMessage where
   parseJSON = withObject "AssistantMessage" $ \o -> do
     amContent' <- o .:? "content"
     amToolCalls' <- o .:? "tool_calls"
-    pure AssistantMessage { amContent = amContent', amToolCalls = fromMaybe [] amToolCalls' }
+    pure AssistantMessage { _amContent = amContent', _amToolCalls = amToolCalls' ^. non [] }
 
 data Message
-  = UserMessage { umContent :: Text }
+  = UserMessage { _umContent :: Text }
   | AssistantMsg AssistantMessage
-  | SystemMessage { smContent :: Text }
+  | SystemMessage { _smContent :: Text }
   | ToolResultMessage
-    { trmToolCallId :: Text, trmToolName :: Text, trmResult :: Text, trmIsError :: Bool }
+    { _trmToolCallId :: Text
+    , _trmToolName   :: Text
+    , _trmResult     :: Text
+    , _trmIsError    :: Bool
+    }
   deriving stock ( Eq, Show, Generic )
+
+makeLenses ''Message
 
 instance ToJSON Message where
   toJSON = \case
@@ -129,18 +214,44 @@ instance ToJSON Message where
 
 data StreamEvent
   = ContentDelta Text
-  | ToolCallStart { tcsIndex :: Int, tcsId :: Text, tcsName :: Text }
-  | ToolCallDelta { tcdIndex :: Int, tcdArguments :: Text }
+  | ToolCallStart { _tcsIndex :: Int, _tcsId :: Text, _tcsName :: Text }
+  | ToolCallDelta { _tcdIndex :: Int, _tcdArguments :: Text }
   | Ping
   deriving stock ( Eq, Show )
 
-data PartialToolCall
-  = PartialToolCall { ptcId :: Maybe Text, ptcName :: Maybe Text, ptcArgumentsSoFar :: Text }
+makeLenses ''StreamEvent
+
+data PartialToolCall = PartialToolCall
+  { _ptcId             :: Maybe Text
+  , _ptcName           :: Maybe Text
+  , _ptcArgumentsSoFar :: Text
+  }
   deriving stock ( Eq, Show, Generic )
 
-data PartialMessage
-  = PartialMessage { pmContentSoFar :: Text, pmToolCallsSoFar :: [ PartialToolCall ] }
+makeLenses ''PartialToolCall
+
+makePartialToolCall :: Text -- ^ id
+                    -> Text -- ^ name
+                    -> Text       -- ^ arguments
+                    -> PartialToolCall
+makePartialToolCall id' name args =
+  PartialToolCall { _ptcId = Just id'
+                  , _ptcName = Just name
+                  , _ptcArgumentsSoFar = args }
+
+data PartialMessage = PartialMessage
+  { _pmContentSoFar   :: Text
+  , _pmToolCallsSoFar :: [ PartialToolCall ]
+  }
   deriving stock ( Eq, Show, Generic )
+
+makeLenses ''PartialMessage
+
+makePartialMessage :: Text -> [PartialToolCall] -> PartialMessage
+makePartialMessage content tcs = PartialMessage
+  { _pmContentSoFar = content
+  , _pmToolCallsSoFar = tcs
+  }
 
 data StreamResult
   = StreamCompleted AssistantMessage
@@ -148,7 +259,20 @@ data StreamResult
   | StreamFailed Text
   deriving stock ( Eq, Show )
 
-data ProviderInfo
-  = ProviderInfo
-  { piName :: Text, piModel :: Text, piSupportsTools :: Bool, piMaxTokens :: Maybe Int }
+data ProviderInfo = ProviderInfo
+  { _piName          :: Text
+  , _piModel         :: Text
+  , _piSupportsTools :: Bool
+  , _piMaxTokens     :: Maybe Int
+  }
   deriving stock ( Eq, Show, Generic )
+
+makeLenses ''ProviderInfo
+
+makeProviderInfo :: Text -> Text -> ProviderInfo
+makeProviderInfo name model = ProviderInfo
+  { _piName = name
+  , _piModel = model
+  , _piSupportsTools = True
+  , _piMaxTokens = Nothing
+  }

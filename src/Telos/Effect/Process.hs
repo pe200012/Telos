@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Telos.Effect.Process
   ( ProcessEff(..)
   , spawnProcess
@@ -6,7 +8,13 @@ module Telos.Effect.Process
   , terminateProcess
   , isProcessRunning
   , ProcessHandle(..)
+  , phProcess
+  , phStdin
+  , phStdout
+  , phStderr
   ) where
+
+import           Lens.Micro.TH    ( makeLenses )
 
 import           Polysemy         ( makeSem )
 
@@ -14,9 +22,14 @@ import qualified System.Process   as P
 
 import           Telos.Core.Error ( ProcessError )
 
-data ProcessHandle
-  = ProcessHandle
-  { phProcess :: P.ProcessHandle, phStdin :: Handle, phStdout :: Handle, phStderr :: Handle }
+data ProcessHandle = ProcessHandle
+  { _phProcess :: P.ProcessHandle
+  , _phStdin   :: Handle
+  , _phStdout  :: Handle
+  , _phStderr  :: Handle
+  }
+
+makeLenses ''ProcessHandle
 
 data ProcessEff m a where
   SpawnProcess

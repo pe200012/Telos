@@ -1,6 +1,12 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Telos.MCP.ServerManager
   ( ServerManager
-  , ToolWithSource(..)
+  , smConnections
+  , ToolWithSource
+  , twsTool
+  , twsServerName
+  , makeToolWithSource
   , newServerManager
   , addServer
   , removeServer
@@ -16,23 +22,41 @@ import           Control.Exception      ( try )
 
 import qualified Data.Map.Strict        as Map
 
+import           Lens.Micro             ( (.~), (^.) )
+import           Lens.Micro.TH          ( makeLenses )
+
 import           Telos.Core.Error       ( MCPError(..) )
-import           Telos.Core.Types       ( Tool(..) )
+import           Telos.Core.Types       ( Tool, makeTool, toolDescription )
 import           Telos.MCP.Client
 import           Telos.MCP.Types
 
-newtype ServerManager = ServerManager { smConnections :: TVar (Map Text MCPConnection) }
+newtype ServerManager = ServerManager { _smConnections :: TVar (Map Text MCPConnection) }
+
+makeLenses ''ServerManager
+
+data ToolWithSource = ToolWithSource
+  { _twsTool       :: Tool
+  , _twsServerName :: Text
+  }
+
+makeLenses ''ToolWithSource
+
+makeToolWithSource :: Tool -> Text -> ToolWithSource
+makeToolWithSource tool srvName = ToolWithSource
+  { _twsTool = tool
+  , _twsServerName = srvName
+  }
 
 newServerManager :: IO ServerManager
 newServerManager = do
   connVar <- newTVarIO Map.empty
-  pure $ ServerManager { smConnections = connVar }
+  pure $ ServerManager { _smConnections = connVar }
 
 addServer :: ServerManager -> ServerConfig -> IO (Either MCPError MCPConnection)
 addServer mgr config = do
   existing <- atomically $ do
-    conns <- readTVar (smConnections mgr)
-    pure $ Map.lookup (scName config) conns
+    conns <- readTVar (mgr ^. smConnections)
+    pure $ Map.lookup (config ^. scName) conns
 
   case existing of
     Just conn -> pure $ Right conn
@@ -41,34 +65,34 @@ addServer mgr config = do
       case result of
         Left err   -> pure $ Left err
         Right conn -> do
-          atomically $ STM.modifyTVar' (smConnections mgr) (Map.insert (scName config) conn)
+          atomically $ STM.modifyTVar' (mgr ^. smConnections) (Map.insert (config ^. scName) conn)
           pure $ Right conn
 
 removeServer :: ServerManager -> Text -> IO ()
 removeServer mgr srvName = do
   mConn <- atomically $ do
-    conns <- readTVar (smConnections mgr)
+    conns <- readTVar (mgr ^. smConnections)
     let foundConn = Map.lookup srvName conns
-    writeTVar (smConnections mgr) (Map.delete srvName conns)
+    writeTVar (mgr ^. smConnections) (Map.delete srvName conns)
     pure foundConn
 
   forM_ mConn disconnectFromServer
 
 getConnection :: ServerManager -> Text -> IO (Maybe MCPConnection)
 getConnection mgr srvName = atomically $ do
-  conns <- readTVar (smConnections mgr)
+  conns <- readTVar (mgr ^. smConnections)
   pure $ Map.lookup srvName conns
 
 getAllConnections :: ServerManager -> IO [ MCPConnection ]
 getAllConnections mgr = atomically $ do
-  conns <- readTVar (smConnections mgr)
+  conns <- readTVar (mgr ^. smConnections)
   pure $ Map.elems conns
 
 shutdownAll :: ServerManager -> IO ()
 shutdownAll mgr = do
   conns <- atomically $ do
-    currentConns <- readTVar (smConnections mgr)
-    writeTVar (smConnections mgr) Map.empty
+    currentConns <- readTVar (mgr ^. smConnections)
+    writeTVar (mgr ^. smConnections) Map.empty
     pure $ Map.elems currentConns
 
   mapM_ safeDisconnect conns
@@ -76,8 +100,6 @@ shutdownAll mgr = do
     safeDisconnect conn = do
       _ <- try @SomeException $ disconnectFromServer conn
       pass
-
-data ToolWithSource = ToolWithSource { twsTool :: Tool, twsServerName :: Text }
 
 aggregateTools :: ServerManager -> IO (Either MCPError [ ToolWithSource ])
 aggregateTools mgr = do
@@ -92,13 +114,11 @@ aggregateTools mgr = do
         Left err  -> pure $ Left err
         Right ltr -> pure
           $ Right
-          $ map (\ti -> ToolWithSource
-                 { twsTool       = Tool { toolName        = tiName ti
-                                        , toolDescription = tiDescription ti
-                                        , toolInputSchema = tiInputSchema ti
-                                        }
-                 , twsServerName = mcName conn
-                 }) (ltrTools ltr)
+          $ map (\ti -> let
+              tool = makeTool (ti ^. tiName) (ti ^. tiInputSchema)
+                       & toolDescription .~ (ti ^. tiDescription)
+            in makeToolWithSource tool (conn ^. mcName)
+          ) (ltr ^. ltrTools)
 
     combineResults :: [ Either MCPError [ ToolWithSource ] ] -> Either MCPError [ ToolWithSource ]
     combineResults = fmap concat . sequence
@@ -113,6 +133,6 @@ findToolServer mgr tName = do
       result <- listTools conn
       case result of
         Left _    -> findInConnections rest
-        Right ltr -> if any (\ti -> tiName ti == tName) (ltrTools ltr)
+        Right ltr -> if any (\ti -> (ti ^. tiName) == tName) (ltr ^. ltrTools)
           then pure $ Just conn
           else findInConnections rest

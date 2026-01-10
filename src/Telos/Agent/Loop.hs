@@ -17,11 +17,15 @@ module Telos.Agent.Loop
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 
+import           Lens.Micro                ( (.~), (^.), non )
+
 import           Polysemy                  ( Embed, Members, Sem, embed )
 
-import           Telos.Agent.Config        ( AgentConfig(..) )
-import           Telos.Agent.Context       ( AgentContext(..)
+import           Telos.Agent.Config        ( acMaxIterations, acSystemPrompt )
+import           Telos.Agent.Context       ( AgentContext
                                            , addMessage
+                                           , ctxConfig
+                                           , ctxInterrupt
                                            , getHistory
                                            , getIterationCount
                                            , getTools
@@ -33,7 +37,7 @@ import           Telos.Agent.Streaming     ( StreamConsumeResult(..), consumeStr
 import qualified Telos.Core.Types          as Core
 import           Telos.Effect.LLM          ( LLM, chat, chatStream )
 import           Telos.Effect.Logger       ( Logger, logDebug, logInfo, logWarn )
-import           Telos.Effect.MCP          ( ContentItem(..), MCP, ToolResult(..), callTool )
+import           Telos.Effect.MCP          ( ContentItem(..), MCP, ToolResult, callTool, trContent, trIsError )
 import           Telos.Effect.StreamOutput ( StreamOutput, flushOutput, outputNewline )
 import qualified Telos.MCP.Types           as MCP
 
@@ -68,7 +72,7 @@ runAgentLoop ctx userInput = do
           pure $ AgentInterrupted partialResponse
         else do
           iteration <- embed $ getIterationCount c
-          let maxIter = acMaxIterations (ctxConfig c)
+          let maxIter = c ^. ctxConfig . acMaxIterations
           if iteration >= maxIter
             then do
               logWarn $ "Max iterations reached: " <> T.pack (show maxIter)
@@ -107,7 +111,7 @@ runAgentLoopStreaming ctx userInput = do
           pure $ AgentInterrupted partialResponse
         else do
           iteration <- embed $ getIterationCount c
-          let maxIter = acMaxIterations (ctxConfig c)
+          let maxIter = c ^. ctxConfig . acMaxIterations
           if iteration >= maxIter
             then do
               logWarn $ "Max iterations reached: " <> T.pack (show maxIter)
@@ -130,8 +134,7 @@ agentStep ctx = do
   history <- embed $ getHistory ctx
   tools <- embed $ getTools ctx
 
-  let config       = ctxConfig ctx
-      systemPrompt = acSystemPrompt config
+  let systemPrompt = ctx ^. ctxConfig . acSystemPrompt
       messages     = case systemPrompt of
         Nothing -> history
         Just sp -> Core.SystemMessage sp : history
@@ -160,8 +163,7 @@ agentStepStreaming ctx = do
   history <- embed $ getHistory ctx
   tools <- embed $ getTools ctx
 
-  let config       = ctxConfig ctx
-      systemPrompt = acSystemPrompt config
+  let systemPrompt = ctx ^. ctxConfig . acSystemPrompt
       messages     = case systemPrompt of
         Nothing -> history
         Just sp -> Core.SystemMessage sp : history
@@ -173,25 +175,25 @@ agentStepStreaming ctx = do
 
   -- Consume stream with interrupt checking and real-time output
   let onEvent = streamEventHandler
-  result <- embed $ consumeStreamWithInterrupt (ctxInterrupt ctx) onEvent conduit
+  result <- embed $ consumeStreamWithInterrupt (ctx ^. ctxInterrupt) onEvent conduit
 
   -- Output newline after stream ends
   outputNewline
   flushOutput
 
   case result of
-    StreamConsumeFailed err -> do
-      logWarn $ "Stream error: " <> err
-      pure $ Left $ AgentError err
+      StreamConsumeFailed err -> do
+        logWarn $ "Stream error: " <> err
+        pure $ Left $ AgentError err
 
-    StreamConsumeInterrupted partial -> do
-      logInfo "Stream interrupted by user"
-      let content = Core.pmContentSoFar partial
-      pure $ Left $ AgentInterrupted content
+      StreamConsumeInterrupted partial -> do
+        logInfo "Stream interrupted by user"
+        let content = partial ^. Core.pmContentSoFar
+        pure $ Left $ AgentInterrupted content
 
-    StreamConsumeCompleted assistantMsg -> do
-      embed $ addMessage ctx (Core.AssistantMsg assistantMsg)
-      handleAssistantMessage ctx assistantMsg
+      StreamConsumeCompleted assistantMsg -> do
+        embed $ addMessage ctx (Core.AssistantMsg assistantMsg)
+        handleAssistantMessage ctx assistantMsg
 
 -- | Handle stream events for real-time output
 streamEventHandler :: Core.StreamEvent -> IO ()
@@ -210,8 +212,8 @@ handleAssistantMessage :: Members '[ MCP, Logger, Embed IO ] r
                        -> Core.AssistantMessage
                        -> Sem r (Either AgentResult ())
 handleAssistantMessage ctx assistantMsg = do
-  let toolCalls = Core.amToolCalls assistantMsg
-      content   = fromMaybe "" (Core.amContent assistantMsg)
+  let toolCalls = assistantMsg ^. Core.amToolCalls
+      content   = assistantMsg ^. Core.amContent . non ""
 
   if not (null toolCalls)
     then do
@@ -234,27 +236,27 @@ executeToolCalls :: Members '[ MCP, Logger, Embed IO ] r
                  -> Sem r [ Core.Message ]
 executeToolCalls _ctx toolCalls = do
   forM toolCalls $ \tc -> do
-    let toolName = Core.tcName tc
-        toolArgs = Core.tcArguments tc
-        toolId   = Core.tcId tc
+    let tName = tc ^. Core.tcName
+        toolArgs = tc ^. Core.tcArguments
+        toolId   = tc ^. Core.tcId
 
-    logDebug $ "Executing tool: " <> toolName
+    logDebug $ "Executing tool: " <> tName
 
-    result <- callTool toolName toolArgs
+    result <- callTool tName toolArgs
 
     case result of
       Left err         -> do
         logWarn $ "Tool error: " <> T.pack (show err)
-        pure $ Core.ToolResultMessage toolId toolName (T.pack $ show err) True
+        pure $ Core.ToolResultMessage toolId tName (T.pack $ show err) True
 
       Right toolResult -> do
         let content = formatToolResult toolResult
-            isError = trIsError toolResult
+            isError = toolResult ^. trIsError
         logDebug $ "Tool result: " <> T.take 200 content
-        pure $ Core.ToolResultMessage toolId toolName content isError
+        pure $ Core.ToolResultMessage toolId tName content isError
 
 formatToolResult :: ToolResult -> Text
-formatToolResult result = T.intercalate "\n" $ map formatContentItem (trContent result)
+formatToolResult result = T.intercalate "\n" $ map formatContentItem (result ^. trContent)
   where
     formatContentItem :: ContentItem -> Text
     formatContentItem = \case
@@ -266,12 +268,11 @@ extractLastAssistantContent :: [ Core.Message ] -> Text
 extractLastAssistantContent = go ""
   where
     go acc [] = acc
-    go _ (Core.AssistantMsg am : rest) = go (fromMaybe "" $ Core.amContent am) rest
+    go _ (Core.AssistantMsg am : rest) = go (fromMaybe "" $ am ^. Core.amContent) rest
     go acc (_ : rest) = go acc rest
 
 mcpToolToCoreTool :: Text -> MCP.ToolInfo -> Core.Tool
 mcpToolToCoreTool serverName ti
-  = Core.Tool { Core.toolName        = serverName <> "/" <> MCP.tiName ti
-              , Core.toolDescription = MCP.tiDescription ti
-              , Core.toolInputSchema = MCP.tiInputSchema ti
-              }
+  = Core.makeTool (serverName <> "/" <> (ti ^. MCP.tiName)) (ti ^. MCP.tiInputSchema)
+      & Core.toolDescription .~ (ti ^. MCP.tiDescription)
+

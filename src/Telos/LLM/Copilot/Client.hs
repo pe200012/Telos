@@ -1,19 +1,52 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
-
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Telos.LLM.Copilot.Client
   ( CopilotClient(..)
+  , clAuth
+  , clManager
+  , clConfig
   , CopilotConfig(..)
+  , ccModel
+  , ccMaxTokens
   , ChatRequest(..)
+  , crModel
+  , crMessages
+  , crTools
+  , crStream
+  , crMaxTokens
+  , crTemperature
   , ChatResponse(..)
+  , chId
+  , chObject
+  , chCreated
+  , chModel
+  , chChoices
   , Choice(..)
+  , chIndex
+  , chMessage
+  , chDelta
+  , chFinishReason
   , Delta(..)
+  , dRole
+  , dContent
+  , dToolCalls
   , ToolCallChunk(..)
+  , tccIndex
+  , tccId
+  , tccType
+  , tccFunction
   , FunctionChunk(..)
+  , fcName
+  , fcArguments
   , ModelInfo(..)
+  , miId
+  , miName
+  , miVersion
   , ModelsResponse(..)
+  , mrData
   , newCopilotClient
   , sendChatRequest
   , sendChatRequestStream
@@ -31,6 +64,9 @@ import qualified Data.ByteString.Lazy        as BL
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as TE
 
+import           Lens.Micro                  ( Lens', (^.), non )
+import           Lens.Micro.TH               ( makeLenses )
+
 import           Network.HTTP.Client
 import           Network.HTTP.Client.Conduit ( bodyReaderSource )
 import           Network.HTTP.Types.Header   ( RequestHeaders )
@@ -40,57 +76,116 @@ import           Telos.Core.Types            ( AssistantMessage, Message, Tool )
 import           Telos.LLM.Copilot.Auth      ( CopilotAuth, CopilotToken(..), ensureValidToken )
 
 -- | Copilot client configuration
-data CopilotConfig = CopilotConfig { ccModel :: Text, ccMaxTokens :: Maybe Int }
+data CopilotConfig = CopilotConfig { _ccModel :: Text, _ccMaxTokens :: Maybe Int }
   deriving stock ( Show )
+
+makeLenses ''CopilotConfig
 
 -- | Unused but kept for API completeness
 _defaultConfig :: CopilotConfig
-_defaultConfig = CopilotConfig { ccModel = "gpt-4.1", ccMaxTokens = Nothing }
+_defaultConfig = CopilotConfig { _ccModel = "gpt-4.1", _ccMaxTokens = Nothing }
 
 -- | Copilot API client
 data CopilotClient
-  = CopilotClient { clAuth :: CopilotAuth, clManager :: Manager, clConfig :: CopilotConfig }
+  = CopilotClient { _clAuth :: CopilotAuth, _clManager :: Manager, _clConfig :: CopilotConfig }
+
+makeLenses ''CopilotClient
 
 -- | Create a new Copilot client
 newCopilotClient :: CopilotAuth -> Manager -> CopilotConfig -> CopilotClient
 newCopilotClient auth mgr config
-  = CopilotClient { clAuth = auth, clManager = mgr, clConfig = config }
+  = CopilotClient { _clAuth = auth, _clManager = mgr, _clConfig = config }
 
 -- | Chat completion request (OpenAI compatible)
 data ChatRequest
-  = ChatRequest { crModel       :: Text
-                , crMessages    :: [ Message ]
-                , crTools       :: Maybe [ Tool ]
-                , crStream      :: Bool
-                , crMaxTokens   :: Maybe Int
-                , crTemperature :: Maybe Double
+  = ChatRequest { _crModel       :: Text
+                , _crMessages    :: [ Message ]
+                , _crTools       :: Maybe [ Tool ]
+                , _crStream      :: Bool
+                , _crMaxTokens   :: Maybe Int
+                , _crTemperature :: Maybe Double
                 }
   deriving stock ( Show, Generic )
 
+makeLenses ''ChatRequest
+
 instance ToJSON ChatRequest where
-  toJSON ChatRequest { .. }
+  toJSON req
     = object
     $ filter
       ((/= Null) . snd)
-      [ "model" .= crModel
-      , "messages" .= crMessages
-      , "tools" .= fmap (map wrapTool) crTools
-      , "stream" .= crStream
-      , "max_tokens" .= crMaxTokens
-      , "temperature" .= crTemperature
+      [ "model" .= (req ^. crModel)
+      , "messages" .= (req ^. crMessages)
+      , "tools" .= fmap (map wrapTool) (req ^. crTools)
+      , "stream" .= (req ^. crStream)
+      , "max_tokens" .= (req ^. crMaxTokens)
+      , "temperature" .= (req ^. crTemperature)
       ]
     where
       wrapTool tool = object [ "type" .= ("function" :: Text), "function" .= tool ]
 
--- | Chat completion response
+-- | Function chunk for streaming tool calls (must be defined first)
+data FunctionChunk = FunctionChunk { _fcName :: Maybe Text, _fcArguments :: Maybe Text }
+  deriving stock ( Show, Generic )
+
+makeLenses ''FunctionChunk
+
+instance FromJSON FunctionChunk where
+  parseJSON
+    = withObject "FunctionChunk" $ \o -> FunctionChunk <$> o .:? "name" <*> o .:? "arguments"
+
+-- | Tool call chunk for streaming (must be before Delta)
+data ToolCallChunk
+  = ToolCallChunk { _tccIndex    :: Int
+                  , _tccId       :: Maybe Text
+                  , _tccType     :: Maybe Text
+                  , _tccFunction :: Maybe FunctionChunk
+                  }
+  deriving stock ( Show, Generic )
+
+makeLenses ''ToolCallChunk
+
+instance FromJSON ToolCallChunk where
+  parseJSON = withObject "ToolCallChunk" $ \o
+    -> ToolCallChunk <$> o .: "index" <*> o .:? "id" <*> o .:? "type" <*> o .:? "function"
+
+-- | Streaming delta (must be before Choice)
+data Delta
+  = Delta { _dRole :: Maybe Text, _dContent :: Maybe Text, _dToolCalls :: Maybe [ ToolCallChunk ] }
+  deriving stock ( Show, Generic )
+
+makeLenses ''Delta
+
+instance FromJSON Delta where
+  parseJSON
+    = withObject "Delta" $ \o -> Delta <$> o .:? "role" <*> o .:? "content" <*> o .:? "tool_calls"
+
+-- | Response choice (now Delta is in scope)
+data Choice
+  = Choice { _chIndex        :: Int
+           , _chMessage      :: Maybe AssistantMessage  -- For non-streaming
+           , _chDelta        :: Maybe Delta             -- For streaming
+           , _chFinishReason :: Maybe Text
+           }
+  deriving stock ( Show, Generic )
+
+makeLenses ''Choice
+
+instance FromJSON Choice where
+  parseJSON = withObject "Choice" $ \o
+    -> Choice <$> o .: "index" <*> o .:? "message" <*> o .:? "delta" <*> o .:? "finish_reason"
+
+-- | Chat completion response (after Choice is defined)
 data ChatResponse
-  = ChatResponse { chId      :: Text
-                 , chObject  :: Maybe Text  -- Optional, not all providers return this
-                 , chCreated :: Maybe Int  -- Optional
-                 , chModel   :: Text
-                 , chChoices :: [ Choice ]
+  = ChatResponse { _chId      :: Text
+                 , _chObject  :: Maybe Text  -- Optional, not all providers return this
+                 , _chCreated :: Maybe Int  -- Optional
+                 , _chModel   :: Text
+                 , _chChoices :: [ Choice ]
                  }
   deriving stock ( Show, Generic )
+
+makeLenses ''ChatResponse
 
 instance FromJSON ChatResponse where
   parseJSON = withObject "ChatResponse" $ \o -> ChatResponse <$> o .: "id"
@@ -99,53 +194,10 @@ instance FromJSON ChatResponse where
     <*> o .: "model"
     <*> o .: "choices"
 
--- | Response choice
-data Choice
-  = Choice { chIndex        :: Int
-           , chMessage      :: Maybe AssistantMessage  -- For non-streaming
-           , chDelta        :: Maybe Delta             -- For streaming
-           , chFinishReason :: Maybe Text
-           }
-  deriving stock ( Show, Generic )
-
-instance FromJSON Choice where
-  parseJSON = withObject "Choice" $ \o
-    -> Choice <$> o .: "index" <*> o .:? "message" <*> o .:? "delta" <*> o .:? "finish_reason"
-
--- | Streaming delta
-data Delta
-  = Delta { dRole :: Maybe Text, dContent :: Maybe Text, dToolCalls :: Maybe [ ToolCallChunk ] }
-  deriving stock ( Show, Generic )
-
-instance FromJSON Delta where
-  parseJSON
-    = withObject "Delta" $ \o -> Delta <$> o .:? "role" <*> o .:? "content" <*> o .:? "tool_calls"
-
--- | Tool call chunk for streaming
-data ToolCallChunk
-  = ToolCallChunk { tccIndex    :: Int
-                  , tccId       :: Maybe Text
-                  , tccType     :: Maybe Text
-                  , tccFunction :: Maybe FunctionChunk
-                  }
-  deriving stock ( Show, Generic )
-
-instance FromJSON ToolCallChunk where
-  parseJSON = withObject "ToolCallChunk" $ \o
-    -> ToolCallChunk <$> o .: "index" <*> o .:? "id" <*> o .:? "type" <*> o .:? "function"
-
--- | Function chunk for streaming tool calls
-data FunctionChunk = FunctionChunk { fcName :: Maybe Text, fcArguments :: Maybe Text }
-  deriving stock ( Show, Generic )
-
-instance FromJSON FunctionChunk where
-  parseJSON
-    = withObject "FunctionChunk" $ \o -> FunctionChunk <$> o .:? "name" <*> o .:? "arguments"
-
 -- | Copilot-specific headers
 copilotHeaders :: CopilotToken -> RequestHeaders
 copilotHeaders token
-  = [ ( "Authorization", "Bearer " <> TE.encodeUtf8 (ctToken token) )
+  = [ ( "Authorization", "Bearer " <> TE.encodeUtf8 (token ^. ctToken') )
     , ( "Content-Type", "application/json" )
     , ( "Accept", "application/json" )
     , ( "copilot-integration-id", "vscode-chat" )
@@ -155,25 +207,29 @@ copilotHeaders token
     , ( "x-github-api-version", "2025-04-01" )
     , ( "X-Initiator", "user" )
     ]
+  where
+    -- Temporary accessor until Auth is refactored
+    ctToken' :: Lens' CopilotToken Text
+    ctToken' f (CopilotToken t e) = (\t' -> CopilotToken t' e) <$> f t
 
 -- | Build chat request
 buildRequest :: CopilotClient -> CopilotToken -> [ Message ] -> [ Tool ] -> Bool -> Request
 buildRequest client token messages tools stream
   = let
-      config  = clConfig client
+      config  = client ^. clConfig
       chatReq
         = ChatRequest
-        { crModel       = ccModel config
-        , crMessages    = messages
-        , crTools       = if null tools
+        { _crModel       = config ^. ccModel
+        , _crMessages    = messages
+        , _crTools       = if null tools
             then Nothing
             else Just tools
-        , crStream      = stream
-        , crMaxTokens   = ccMaxTokens config
-        , crTemperature = Nothing
+        , _crStream      = stream
+        , _crMaxTokens   = config ^. ccMaxTokens
+        , _crTemperature = Nothing
         }
       body    = encode chatReq
-    in 
+    in
       defaultRequest
       { host           = "api.githubcopilot.com"
       , port           = 443
@@ -187,12 +243,12 @@ buildRequest client token messages tools stream
 -- | Send non-streaming chat request
 sendChatRequest :: CopilotClient -> [ Message ] -> [ Tool ] -> IO (Either Text ChatResponse)
 sendChatRequest client messages tools = do
-  tokenResult <- ensureValidToken (clAuth client)
+  tokenResult <- ensureValidToken (client ^. clAuth)
   case tokenResult of
     Left err    -> pure $ Left $ T.pack $ show err
     Right token -> do
       let req = buildRequest client token messages tools False
-      result <- try $ httpLbs req (clManager client)
+      result <- try $ httpLbs req (client ^. clManager)
       case result of
         Left (e :: SomeException) -> pure $ Left $ T.pack $ show e
         Right resp -> case statusCode (responseStatus resp) of
@@ -210,7 +266,7 @@ sendChatRequest client messages tools = do
 sendChatRequestStream
   :: CopilotClient -> [ Message ] -> [ Tool ] -> IO (Either Text (ConduitT () ChatResponse IO ()))
 sendChatRequestStream client messages tools = do
-  tokenResult <- ensureValidToken (clAuth client)
+  tokenResult <- ensureValidToken (client ^. clAuth)
   case tokenResult of
     Left err    -> pure $ Left $ T.pack $ show err
     Right token -> do
@@ -219,7 +275,7 @@ sendChatRequestStream client messages tools = do
             { requestHeaders = copilotHeaders token ++ [ ( "Accept", "text/event-stream" ) ] }
 
       -- Create streaming response
-      result <- try $ responseOpen req (clManager client)
+      result <- try $ responseOpen req (client ^. clManager)
       case result of
         Left (e :: SomeException) -> pure $ Left $ T.pack $ show e
         Right resp -> case statusCode (responseStatus resp) of
@@ -247,11 +303,11 @@ linesC = awaitForever $ \chunk -> do
     splitLines bs
       = let
           parts = BS8.split '\n' bs
-        in 
+        in
           case parts of
             []    -> ( [], BS.empty )
             [ x ] -> ( [], x )
-            xs    -> ( maybe [] toList (viaNonEmpty init xs), fromMaybe BS.empty (viaNonEmpty last xs) )
+            xs    -> ( maybe [] toList (viaNonEmpty init xs), viaNonEmpty last xs ^. non BS.empty )
 
 -- | Parse JSON chunks from SSE data
 parseChunks :: ConduitT BS.ByteString ChatResponse IO ()
@@ -261,16 +317,20 @@ parseChunks
     Right resp -> yield resp
 
 -- | Model information
-data ModelInfo = ModelInfo { miId :: Text, miName :: Maybe Text, miVersion :: Maybe Text }
+data ModelInfo = ModelInfo { _miId :: Text, _miName :: Maybe Text, _miVersion :: Maybe Text }
   deriving stock ( Show, Generic )
+
+makeLenses ''ModelInfo
 
 instance FromJSON ModelInfo where
   parseJSON
     = withObject "ModelInfo" $ \o -> ModelInfo <$> o .: "id" <*> o .:? "name" <*> o .:? "version"
 
 -- | Models list response
-newtype ModelsResponse = ModelsResponse { mrData :: [ ModelInfo ] }
+newtype ModelsResponse = ModelsResponse { _mrData :: [ ModelInfo ] }
   deriving stock ( Show, Generic )
+
+makeLenses ''ModelsResponse
 
 instance FromJSON ModelsResponse where
   parseJSON = withObject "ModelsResponse" $ \o -> ModelsResponse <$> o .: "data"
@@ -278,14 +338,14 @@ instance FromJSON ModelsResponse where
 -- | List available models
 listModels :: CopilotClient -> IO (Either Text ModelsResponse)
 listModels client = do
-  tokenResult <- ensureValidToken (clAuth client)
+  tokenResult <- ensureValidToken (client ^. clAuth)
   case tokenResult of
     Left err    -> pure $ Left $ T.pack $ show err
     Right token -> do
       initReq <- parseRequest "https://api.githubcopilot.com/models"
       let req = initReq { requestHeaders = copilotHeaders token }
 
-      result <- try $ httpLbs req (clManager client)
+      result <- try $ httpLbs req (client ^. clManager)
       case result of
         Left (e :: SomeException) -> pure $ Left $ T.pack $ show e
         Right resp -> case statusCode (responseStatus resp) of

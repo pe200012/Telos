@@ -96,6 +96,9 @@ library
     , http-client-tls
     , http-conduit
     , http-types
+    , microlens
+    , microlens-pro
+    , microlens-th
     , mtl
     , polysemy >=1.9
     , process >=1.6
@@ -164,6 +167,9 @@ executable Telos-exe
     , http-client-tls
     , http-conduit
     , http-types
+    , microlens
+    , microlens-pro
+    , microlens-th
     , mtl
     , polysemy >=1.9
     , process >=1.6
@@ -232,6 +238,9 @@ executable test-agent
     , http-client-tls
     , http-conduit
     , http-types
+    , microlens
+    , microlens-pro
+    , microlens-th
     , mtl
     , polysemy >=1.9
     , process >=1.6
@@ -300,6 +309,9 @@ executable test-copilot
     , http-client-tls
     , http-conduit
     , http-types
+    , microlens
+    , microlens-pro
+    , microlens-th
     , mtl
     , polysemy >=1.9
     , process >=1.6
@@ -380,6 +392,9 @@ test-suite Telos-test
     , http-client-tls
     , http-conduit
     , http-types
+    , microlens
+    , microlens-pro
+    , microlens-th
     , mtl
     , polysemy >=1.9
     , process >=1.6

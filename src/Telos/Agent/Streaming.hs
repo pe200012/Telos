@@ -1,85 +1,73 @@
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
--- | Streaming response handling for the agent loop.
--- Handles accumulation of stream events and interrupt checking.
 module Telos.Agent.Streaming
-  ( -- * Accumulator
-    StreamAccumulator(..)
+  ( StreamAccumulator
+  , saContent
+  , saToolCalls
   , emptyAccumulator
   , accumulate
   , finalizeAccumulator
   , accumulatorToAssistantMessage
-    -- * Stream Processing
   , consumeStreamWithInterrupt
   , StreamConsumeResult(..)
   ) where
 
-import           Control.Concurrent.MVar  ( isEmptyMVar )
+import           Control.Concurrent.MVar ( isEmptyMVar )
 
-import qualified Data.IntMap.Strict       as IntMap
-import qualified Data.Text as T
-
-import           Data.Aeson              ( Value(..), eitherDecodeStrict' )
 import           Conduit
+import           Data.Aeson              ( Value(..), eitherDecodeStrict' )
+import qualified Data.IntMap.Strict      as IntMap
+import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as TE
+
+import           Lens.Micro              ( (%~), (^.) )
+import           Lens.Micro.TH           ( makeLenses )
 
 import           Telos.Core.Types
 
--- | Accumulator for building up a message from stream events.
-data StreamAccumulator
-  = StreamAccumulator { saContent   :: !Text
-                        -- ^ Accumulated text content
-                      , saToolCalls :: !(IntMap PartialToolCall)
-                        -- ^ Tool calls indexed by their stream index
-                      }
+data StreamAccumulator = StreamAccumulator
+  { _saContent   :: !Text
+  , _saToolCalls :: !(IntMap PartialToolCall)
+  }
   deriving ( Show, Eq )
 
--- | Create an empty accumulator.
-emptyAccumulator :: StreamAccumulator
-emptyAccumulator = StreamAccumulator { saContent = "", saToolCalls = IntMap.empty }
+makeLenses ''StreamAccumulator
 
--- | Accumulate a stream event into the accumulator.
+emptyAccumulator :: StreamAccumulator
+emptyAccumulator = StreamAccumulator { _saContent = "", _saToolCalls = IntMap.empty }
+
 accumulate :: StreamAccumulator -> StreamEvent -> StreamAccumulator
 accumulate !acc event = case event of
-  ContentDelta txt -> acc { saContent = saContent acc <> txt }
+  ContentDelta txt -> acc & saContent %~ (<> txt)
 
-  ToolCallStart idx toolId tName -> let
-      ptc
-        = PartialToolCall { ptcId = Just toolId, ptcName = Just tName, ptcArgumentsSoFar = "" }
-    in
-      acc { saToolCalls = IntMap.insert idx ptc (saToolCalls acc) }
+  ToolCallStart idx toolId tName ->
+    let ptc = makePartialToolCall toolId tName ""
+    in acc & saToolCalls %~ IntMap.insert idx ptc
 
-  ToolCallDelta idx argChunk -> let
-      updateArgs ptc = ptc { ptcArgumentsSoFar = ptcArgumentsSoFar ptc <> argChunk }
-    in
-      acc { saToolCalls = IntMap.adjust updateArgs idx (saToolCalls acc) }
+  ToolCallDelta idx argChunk ->
+    let updateArgs ptc = ptc & ptcArgumentsSoFar %~ (<> argChunk)
+    in acc & saToolCalls %~ IntMap.adjust updateArgs idx
 
   Ping -> acc
 
--- | Finalize the accumulator into a PartialMessage.
 finalizeAccumulator :: StreamAccumulator -> PartialMessage
-finalizeAccumulator acc
-  = PartialMessage
-  { pmContentSoFar = saContent acc, pmToolCallsSoFar = IntMap.elems (saToolCalls acc) }
+finalizeAccumulator acc = makePartialMessage
+  (acc ^. saContent)
+  (IntMap.elems (acc ^. saToolCalls))
 
--- | Convert a completed accumulator to an AssistantMessage.
--- Returns Left with error message if tool call arguments fail to parse as JSON.
 accumulatorToAssistantMessage :: StreamAccumulator -> Either Text AssistantMessage
 accumulatorToAssistantMessage acc = do
-  toolCalls <- traverse partialToToolCall (IntMap.elems (saToolCalls acc))
-  let content
-        = if T.null (saContent acc)
-          then Nothing
-          else Just (saContent acc)
-  Right AssistantMessage { amContent = content, amToolCalls = toolCalls }
+  toolCalls <- traverse partialToToolCall (IntMap.elems (acc ^. saToolCalls))
+  let content = if T.null (acc ^. saContent) then Nothing else Just (acc ^. saContent)
+  Right $ makeAssistantMessage content toolCalls
   where
     partialToToolCall :: PartialToolCall -> Either Text ToolCall
     partialToToolCall ptc = do
-      toolId <- maybe (Left "Missing tool call ID") Right (ptcId ptc)
-      tName <- maybe (Left "Missing tool call name") Right (ptcName ptc)
-      args <- parseArguments (ptcArgumentsSoFar ptc)
-      Right ToolCall { tcId = toolId, tcName = tName, tcArguments = args }
+      toolId <- maybe (Left "Missing tool call ID") Right (ptc ^. ptcId)
+      tName <- maybe (Left "Missing tool call name") Right (ptc ^. ptcName)
+      args <- parseArguments (ptc ^. ptcArgumentsSoFar)
+      Right (makeToolCall toolId tName args)
 
     parseArguments :: Text -> Either Text Value
     parseArguments "" = Right (Object mempty)
@@ -87,34 +75,21 @@ accumulatorToAssistantMessage acc = do
       Left err -> Left $ "Failed to parse tool arguments: " <> toText err
       Right v  -> Right v
 
--- | Result of consuming a stream.
 data StreamConsumeResult
   = StreamConsumeCompleted !AssistantMessage
-    -- ^ Stream completed successfully
   | StreamConsumeInterrupted !PartialMessage
-    -- ^ Stream was interrupted by user
   | StreamConsumeFailed !Text
-    -- ^ Stream failed with error
   deriving ( Show, Eq )
 
--- | Consume a stream with interrupt checking.
--- Calls the event handler for each event (for real-time output).
--- Checks the interrupt MVar before processing each event.
 consumeStreamWithInterrupt
-  :: MVar ()                                    -- ^ Interrupt signal
-  -> (StreamEvent -> IO ())                     -- ^ Event handler (for output)
-  -> ConduitT () StreamEvent IO StreamResult    -- ^ Source conduit
+  :: MVar ()
+  -> (StreamEvent -> IO ())
+  -> ConduitT () StreamEvent IO StreamResult
   -> IO StreamConsumeResult
 consumeStreamWithInterrupt interruptVar onEvent source = do
   accRef <- newIORef emptyAccumulator
-
-  -- Run the conduit, consuming events and accumulating
-  -- We use fuseBoth to run both the source and sink, getting both results
   _streamResult <- runConduit $ fuseUpstream source (processEvents accRef)
-
-  -- Check if we were interrupted
   interrupted <- not <$> isEmptyMVar interruptVar
-
   acc <- readIORef accRef
   if interrupted
     then pure $ StreamConsumeInterrupted (finalizeAccumulator acc)
@@ -126,18 +101,14 @@ consumeStreamWithInterrupt interruptVar onEvent source = do
     processEvents accRef = loop
       where
         loop = do
-          -- Check for interrupt before awaiting
           interrupted <- liftIO $ not <$> isEmptyMVar interruptVar
           unless interrupted $ do
             mevent <- await
             case mevent of
-              Nothing    -> pass  -- Stream ended
+              Nothing    -> pass
               Just event -> do
-                -- Process the event
                 liftIO $ do
                   modifyIORef' accRef (`accumulate` event)
                   onEvent event
-
-                -- Check interrupt after processing
                 interruptedAfter <- liftIO $ not <$> isEmptyMVar interruptVar
                 unless interruptedAfter loop
