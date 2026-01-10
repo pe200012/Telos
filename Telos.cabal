@@ -31,6 +31,9 @@ library
       Telos.Agent.Loop
       Telos.Agent.Streaming
       Telos.App
+      Telos.CLI.Config
+      Telos.CLI.LazyServerManager
+      Telos.CLI.Repl
       Telos.Core.Error
       Telos.Core.Types
       Telos.Effect.LLM

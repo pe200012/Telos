@@ -10,19 +10,20 @@ module Telos.Agent.LoopSpec ( spec ) where
 import           Test.Hspec
 
 import           Data.Aeson          ( object, (.=) )
+import           Lens.Micro          ( (^.), (.~) )
 
 import           Polysemy
-import Polysemy.Error
+import           Polysemy.Error
 
-import Telos.Agent.Config ( AgentConfig(..), defaultAgentConfig )
-import Telos.Agent.Context ( newAgentContext, getHistory )
-import Telos.Agent.Loop
-import Telos.Core.Error ( AppError(..), LLMError(..), MCPError(..) )
-import Telos.Core.Types
-import Telos.Effect.LLM ( LLM(..) )
-import Telos.Effect.Logger ( Logger(..) )
-import Telos.Effect.MCP ( MCP(..), ContentItem(..), ToolResult(..) )
-import Telos.MCP.Types ( ToolInfo(..) )
+import           Telos.Agent.Config  ( defaultAgentConfig, acMaxIterations, makeAgentConfig )
+import           Telos.Agent.Context ( newAgentContext, getHistory )
+import           Telos.Agent.Loop
+import           Telos.Core.Error    ( AppError(..), LLMError(..), MCPError(..) )
+import           Telos.Core.Types
+import           Telos.Effect.LLM    ( LLM(..) )
+import           Telos.Effect.Logger ( Logger(..) )
+import           Telos.Effect.MCP    ( MCP(..), ContentItem(..), ToolResult, makeToolResult )
+import           Telos.MCP.Types     ( makeToolInfo, tiDescription )
 
 runNoopLogger :: InterpreterFor Logger r
 runNoopLogger = interpret $ \case
@@ -35,7 +36,7 @@ runMockLLM
 runMockLLM ref = interpret $ \case
   Chat _ _ -> embed @IO $ readIORef ref
   ChatStream _ _ -> pure $ error "Not implemented in mock"
-  GetProviderInfo -> pure $ ProviderInfo "mock" "mock" True Nothing
+  GetProviderInfo -> pure $ makeProviderInfo "mock" "mock"
 
 runMockMCP :: Member (Embed IO) r => IORef (Either MCPError ToolResult) -> InterpreterFor MCP r
 runMockMCP ref = interpret $ \case
@@ -62,16 +63,16 @@ spec = do
     describe "runAgentLoop" $ do
       it "returns simple text response" $ do
         ctx <- newAgentContext defaultAgentConfig
-        llmRef <- newIORef $ Right $ AssistantMessage (Just "Hello back!") []
-        mcpRef <- newIORef $ Right $ ToolResult [] False
+        llmRef <- newIORef $ Right $ makeAssistantMessage (Just "Hello back!") []
+        mcpRef <- newIORef $ Right $ makeToolResult []
         
         result <- runTest llmRef mcpRef (runAgentLoop ctx "Hello")
         result `shouldBe` Right (AgentResponse "Hello back!")
 
       it "adds user message to history" $ do
         ctx <- newAgentContext defaultAgentConfig
-        llmRef <- newIORef $ Right $ AssistantMessage (Just "Response") []
-        mcpRef <- newIORef $ Right $ ToolResult [] False
+        llmRef <- newIORef $ Right $ makeAssistantMessage (Just "Response") []
+        mcpRef <- newIORef $ Right $ makeToolResult []
         
         _ <- runTest llmRef mcpRef (runAgentLoop ctx "Test message")
         history <- getHistory ctx
@@ -83,7 +84,7 @@ spec = do
       it "handles LLM errors" $ do
         ctx <- newAgentContext defaultAgentConfig
         llmRef <- newIORef $ Left $ LLMAuthError "auth failed"
-        mcpRef <- newIORef $ Right $ ToolResult [] False
+        mcpRef <- newIORef $ Right $ makeToolResult []
         
         result <- runTest llmRef mcpRef (runAgentLoop ctx "Hello")
         case result of
@@ -91,11 +92,11 @@ spec = do
           _ -> expectationFailure "Expected AgentError"
 
       it "respects max iterations" $ do
-        let config = defaultAgentConfig { acMaxIterations = 2 }
+        let config = makeAgentConfig "gpt-4" & acMaxIterations .~ 2
         ctx <- newAgentContext config
-        llmRef <- newIORef $ Right $ AssistantMessage Nothing 
-          [ToolCall "id" "test/tool" (object ["arg" .= ("val" :: Text)])]
-        mcpRef <- newIORef $ Right $ ToolResult [TextContent "result"] False
+        llmRef <- newIORef $ Right $ makeAssistantMessage Nothing 
+          [makeToolCall "id" "test/tool" (object ["arg" .= ("val" :: Text)])]
+        mcpRef <- newIORef $ Right $ makeToolResult [TextContent "result"]
         
         result <- runTest llmRef mcpRef (runAgentLoop ctx "Loop forever")
         case result of
@@ -105,9 +106,9 @@ spec = do
     describe "executeToolCalls" $ do
       it "executes tool calls and returns results" $ do
         ctx <- newAgentContext defaultAgentConfig
-        let toolCalls = [ToolCall "tc1" "test/tool" (object ["x" .= (1 :: Int)])]
-        llmRef <- newIORef $ Right $ AssistantMessage Nothing []
-        mcpRef <- newIORef $ Right $ ToolResult [TextContent "Tool executed"] False
+        let toolCalls = [makeToolCall "tc1" "test/tool" (object ["x" .= (1 :: Int)])]
+        llmRef <- newIORef $ Right $ makeAssistantMessage Nothing []
+        mcpRef <- newIORef $ Right $ makeToolResult [TextContent "Tool executed"]
         
         result <- runTest llmRef mcpRef (executeToolCalls ctx toolCalls)
         case result of
@@ -120,8 +121,8 @@ spec = do
 
       it "handles tool errors" $ do
         ctx <- newAgentContext defaultAgentConfig
-        let toolCalls = [ToolCall "tc1" "failing/tool" (object [])]
-        llmRef <- newIORef $ Right $ AssistantMessage Nothing []
+        let toolCalls = [makeToolCall "tc1" "failing/tool" (object [])]
+        llmRef <- newIORef $ Right $ makeAssistantMessage Nothing []
         mcpRef <- newIORef $ Left $ MCPToolExecutionFailed "Tool failed"
         
         result <- runTest llmRef mcpRef (executeToolCalls ctx toolCalls)
@@ -131,23 +132,16 @@ spec = do
 
     describe "mcpToolToCoreTool" $ do
       it "converts MCP ToolInfo to Core Tool with server prefix" $ do
-        let mcpTool = ToolInfo
-              { tiName = "read_file"
-              , tiDescription = Just "Reads a file"
-              , tiInputSchema = object ["type" .= ("object" :: Text)]
-              }
+        let mcpTool = makeToolInfo "read_file" (object ["type" .= ("object" :: Text)])
+                        & tiDescription .~ Just "Reads a file"
             coreTool = mcpToolToCoreTool "filesystem" mcpTool
         
-        toolName coreTool `shouldBe` "filesystem/read_file"
-        toolDescription coreTool `shouldBe` Just "Reads a file"
+        (coreTool ^. toolName) `shouldBe` "filesystem/read_file"
+        (coreTool ^. toolDescription) `shouldBe` Just "Reads a file"
 
       it "handles tools without description" $ do
-        let mcpTool = ToolInfo
-              { tiName = "simple"
-              , tiDescription = Nothing
-              , tiInputSchema = object []
-              }
+        let mcpTool = makeToolInfo "simple" (object [])
             coreTool = mcpToolToCoreTool "server" mcpTool
         
-        toolName coreTool `shouldBe` "server/simple"
-        toolDescription coreTool `shouldBe` Nothing
+        (coreTool ^. toolName) `shouldBe` "server/simple"
+        (coreTool ^. toolDescription) `shouldBe` Nothing

@@ -66,7 +66,9 @@ import           Data.Aeson          ( (.:)
                                      , (.=)
                                      , FromJSON(..)
                                      , ToJSON(..)
-                                     , Value
+                                     , Value(..)
+                                     , eitherDecode
+                                     , encode
                                      , object
                                      , withObject
                                      , withText
@@ -118,7 +120,11 @@ instance ToJSON ToolCall where
     = object
       [ "id" .= (tc ^. tcId)
       , "type" .= ("function" :: Text)
-      , "function" .= object [ "name" .= (tc ^. tcName), "arguments" .= (tc ^. tcArguments) ]
+      , "function" .= object 
+          [ "name" .= (tc ^. tcName)
+          -- OpenAI requires arguments as a JSON string, not an object
+          , "arguments" .= (decodeUtf8 (encode (tc ^. tcArguments)) :: Text)
+          ]
       ]
 
 instance FromJSON ToolCall where
@@ -126,7 +132,13 @@ instance FromJSON ToolCall where
     tcId' <- o .: "id"
     fn <- o .: "function"
     tcName' <- fn .: "name"
-    tcArguments' <- fn .: "arguments"
+    -- OpenAI returns arguments as a JSON string, need to decode it
+    argsRaw <- fn .: "arguments"
+    tcArguments' <- case argsRaw of
+      String s -> case eitherDecode (encodeUtf8 $ fromStrict s) of
+        Left err -> fail $ "Failed to parse tool arguments: " <> err
+        Right v  -> pure v
+      v -> pure v  -- Already a Value (object)
     pure ToolCall { _tcId = tcId', _tcName = tcName', _tcArguments = tcArguments' }
 
 data Tool = Tool
@@ -148,18 +160,16 @@ makeTool name schema = Tool
 instance ToJSON Tool where
   toJSON t
     = object
-      [ "type" .= ("function" :: Text)
-      , "function"
-        .= object
-          [ "name" .= (t ^. toolName)
-          , "description" .= (t ^. toolDescription)
-          , "parameters" .= (t ^. toolInputSchema)
-          ]
+      [ "name" .= (t ^. toolName)
+      , "description" .= (t ^. toolDescription)
+      , "parameters" .= (t ^. toolInputSchema)
       ]
 
 instance FromJSON Tool where
   parseJSON = withObject "Tool" $ \o -> do
-    fn <- o .: "function"
+    -- Support both wrapped and unwrapped formats
+    mFn <- o .:? "function"
+    let fn = fromMaybe o mFn
     toolName' <- fn .: "name"
     toolDescription' <- fn .:? "description"
     toolInputSchema' <- fn .: "parameters"
@@ -187,7 +197,8 @@ instance ToJSON AssistantMessage where
   toJSON am
     = object
       [ "role" .= Assistant
-      , "content" .= (am ^. amContent)
+      -- OpenAI requires content to be string (not null) when tool_calls present
+      , "content" .= fromMaybe "" (am ^. amContent)
       , "tool_calls"
         .= if null (am ^. amToolCalls)
           then Nothing

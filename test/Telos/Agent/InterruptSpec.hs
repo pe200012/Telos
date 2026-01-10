@@ -1,11 +1,12 @@
 module Telos.Agent.InterruptSpec ( spec ) where
 
 import           Control.Concurrent.MVar ( isEmptyMVar )
+import           Lens.Micro              ( (^.) )
 import           Test.Hspec
 
 import           Telos.Agent.Config      ( defaultAgentConfig )
-import Telos.Agent.Context ( newAgentContext, ctxInterrupt )
-import Telos.Agent.Interrupt
+import           Telos.Agent.Context     ( newAgentContext, ctxInterrupt )
+import           Telos.Agent.Interrupt
 
 spec :: Spec
 spec = do
@@ -25,10 +26,10 @@ spec = do
     describe "signalInterrupt" $ do
       it "fills the interrupt MVar" $ do
         ctx <- newAgentContext defaultAgentConfig
-        empty1 <- isEmptyMVar (ctxInterrupt ctx)
+        empty1 <- isEmptyMVar (ctx ^. ctxInterrupt)
         empty1 `shouldBe` True
         signalInterrupt ctx
-        empty2 <- isEmptyMVar (ctxInterrupt ctx)
+        empty2 <- isEmptyMVar (ctx ^. ctxInterrupt)
         empty2 `shouldBe` False
 
       it "is idempotent (multiple signals don't block)" $ do

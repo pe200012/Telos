@@ -2,11 +2,12 @@ module Telos.Agent.ContextSpec ( spec ) where
 
 import           Control.Concurrent.MVar ( isEmptyMVar )
 import           Data.Aeson              ( object )
+import           Lens.Micro              ( (^.) )
 import           Test.Hspec
 
 import           Telos.Agent.Config      ( defaultAgentConfig )
-import Telos.Agent.Context
-import Telos.Core.Types ( Message(..), Tool(..) )
+import           Telos.Agent.Context
+import           Telos.Core.Types        ( Message(..), makeTool )
 
 spec :: Spec
 spec = do
@@ -29,7 +30,7 @@ spec = do
 
       it "creates context with empty interrupt MVar" $ do
         ctx <- newAgentContext defaultAgentConfig
-        isEmpty <- isEmptyMVar (ctxInterrupt ctx)
+        isEmpty <- isEmptyMVar (ctx ^. ctxInterrupt)
         isEmpty `shouldBe` True
 
     describe "addMessage" $ do
@@ -66,15 +67,15 @@ spec = do
     describe "registerTools" $ do
       it "registers tools" $ do
         ctx <- newAgentContext defaultAgentConfig
-        let testTool = Tool "test/tool" (Just "A test tool") (object [])
+        let testTool = makeTool "test/tool" (object [])
         registerTools ctx [testTool]
         tools <- getTools ctx
         tools `shouldBe` [testTool]
 
       it "replaces existing tools" $ do
         ctx <- newAgentContext defaultAgentConfig
-        let tool1 = Tool "tool1" Nothing (object [])
-            tool2 = Tool "tool2" Nothing (object [])
+        let tool1 = makeTool "tool1" (object [])
+            tool2 = makeTool "tool2" (object [])
         registerTools ctx [tool1]
         registerTools ctx [tool2]
         tools <- getTools ctx
@@ -101,6 +102,6 @@ spec = do
     describe "interrupt MVar" $ do
       it "can be signaled" $ do
         ctx <- newAgentContext defaultAgentConfig
-        _ <- tryPutMVar (ctxInterrupt ctx) ()
-        isEmpty <- isEmptyMVar (ctxInterrupt ctx)
+        _ <- tryPutMVar (ctx ^. ctxInterrupt) ()
+        isEmpty <- isEmptyMVar (ctx ^. ctxInterrupt)
         isEmpty `shouldBe` False

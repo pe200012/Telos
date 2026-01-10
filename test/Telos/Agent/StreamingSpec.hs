@@ -5,6 +5,7 @@ module Telos.Agent.StreamingSpec (spec) where
 
 import Test.Hspec
 import Data.IntMap.Strict qualified as IntMap
+import Lens.Micro ( (^.) )
 
 import Telos.Agent.Streaming
 import Telos.Core.Types
@@ -14,88 +15,88 @@ spec = do
   describe "StreamAccumulator" $ do
     describe "emptyAccumulator" $ do
       it "starts with empty content" $ do
-        saContent emptyAccumulator `shouldBe` ""
+        (emptyAccumulator ^. saContent) `shouldBe` ""
       
       it "starts with no tool calls" $ do
-        IntMap.null (saToolCalls emptyAccumulator) `shouldBe` True
+        IntMap.null (emptyAccumulator ^. saToolCalls) `shouldBe` True
 
     describe "accumulate" $ do
       it "accumulates content deltas" $ do
         let acc1 = accumulate emptyAccumulator (ContentDelta "Hello ")
             acc2 = accumulate acc1 (ContentDelta "World")
-        saContent acc2 `shouldBe` "Hello World"
+        (acc2 ^. saContent) `shouldBe` "Hello World"
       
       it "handles empty content deltas" $ do
         let acc = accumulate emptyAccumulator (ContentDelta "")
-        saContent acc `shouldBe` ""
+        (acc ^. saContent) `shouldBe` ""
       
       it "starts tool calls with ToolCallStart" $ do
         let acc = accumulate emptyAccumulator (ToolCallStart 0 "call-123" "get_weather")
-        IntMap.size (saToolCalls acc) `shouldBe` 1
-        case IntMap.lookup 0 (saToolCalls acc) of
+        IntMap.size (acc ^. saToolCalls) `shouldBe` 1
+        case IntMap.lookup 0 (acc ^. saToolCalls) of
           Nothing -> expectationFailure "Tool call not found"
           Just ptc -> do
-            ptcId ptc `shouldBe` Just "call-123"
-            ptcName ptc `shouldBe` Just "get_weather"
-            ptcArgumentsSoFar ptc `shouldBe` ""
+            (ptc ^. ptcId) `shouldBe` Just "call-123"
+            (ptc ^. ptcName) `shouldBe` Just "get_weather"
+            (ptc ^. ptcArgumentsSoFar) `shouldBe` ""
       
       it "accumulates tool call arguments with ToolCallDelta" $ do
         let acc1 = accumulate emptyAccumulator (ToolCallStart 0 "call-123" "get_weather")
             acc2 = accumulate acc1 (ToolCallDelta 0 "{\"loc")
             acc3 = accumulate acc2 (ToolCallDelta 0 "ation\":\"NYC\"}")
-        case IntMap.lookup 0 (saToolCalls acc3) of
+        case IntMap.lookup 0 (acc3 ^. saToolCalls) of
           Nothing -> expectationFailure "Tool call not found"
-          Just ptc -> ptcArgumentsSoFar ptc `shouldBe` "{\"location\":\"NYC\"}"
+          Just ptc -> (ptc ^. ptcArgumentsSoFar) `shouldBe` "{\"location\":\"NYC\"}"
       
       it "handles multiple tool calls by index" $ do
         let acc1 = accumulate emptyAccumulator (ToolCallStart 0 "call-1" "tool_a")
             acc2 = accumulate acc1 (ToolCallStart 1 "call-2" "tool_b")
             acc3 = accumulate acc2 (ToolCallDelta 0 "{\"a\":1}")
             acc4 = accumulate acc3 (ToolCallDelta 1 "{\"b\":2}")
-        IntMap.size (saToolCalls acc4) `shouldBe` 2
-        case IntMap.lookup 0 (saToolCalls acc4) of
+        IntMap.size (acc4 ^. saToolCalls) `shouldBe` 2
+        case IntMap.lookup 0 (acc4 ^. saToolCalls) of
           Nothing -> expectationFailure "Tool call 0 not found"
-          Just ptc -> ptcArgumentsSoFar ptc `shouldBe` "{\"a\":1}"
-        case IntMap.lookup 1 (saToolCalls acc4) of
+          Just ptc -> (ptc ^. ptcArgumentsSoFar) `shouldBe` "{\"a\":1}"
+        case IntMap.lookup 1 (acc4 ^. saToolCalls) of
           Nothing -> expectationFailure "Tool call 1 not found"
-          Just ptc -> ptcArgumentsSoFar ptc `shouldBe` "{\"b\":2}"
+          Just ptc -> (ptc ^. ptcArgumentsSoFar) `shouldBe` "{\"b\":2}"
       
       it "ignores Ping events" $ do
         let acc1 = accumulate emptyAccumulator (ContentDelta "test")
             acc2 = accumulate acc1 Ping
-        saContent acc2 `shouldBe` "test"
-        IntMap.size (saToolCalls acc2) `shouldBe` 0
+        (acc2 ^. saContent) `shouldBe` "test"
+        IntMap.size (acc2 ^. saToolCalls) `shouldBe` 0
 
     describe "finalizeAccumulator" $ do
       it "creates PartialMessage with accumulated content" $ do
         let acc = accumulate emptyAccumulator (ContentDelta "Hello")
             pm = finalizeAccumulator acc
-        pmContentSoFar pm `shouldBe` "Hello"
-        pmToolCallsSoFar pm `shouldBe` []
+        (pm ^. pmContentSoFar) `shouldBe` "Hello"
+        (pm ^. pmToolCallsSoFar) `shouldBe` []
       
       it "includes partial tool calls" $ do
         let acc1 = accumulate emptyAccumulator (ToolCallStart 0 "id-1" "tool")
             acc2 = accumulate acc1 (ToolCallDelta 0 "{\"x\":")
             pm = finalizeAccumulator acc2
-        length (pmToolCallsSoFar pm) `shouldBe` 1
-        let ptc = fromMaybe (error "Empty tool calls") $ viaNonEmpty head (pmToolCallsSoFar pm)
-        ptcArgumentsSoFar ptc `shouldBe` "{\"x\":"
+        length (pm ^. pmToolCallsSoFar) `shouldBe` 1
+        let ptc = fromMaybe (error "Empty tool calls") $ viaNonEmpty head (pm ^. pmToolCallsSoFar)
+        (ptc ^. ptcArgumentsSoFar) `shouldBe` "{\"x\":"
 
     describe "accumulatorToAssistantMessage" $ do
       it "converts empty accumulator to empty message" $ do
         case accumulatorToAssistantMessage emptyAccumulator of
           Left err -> expectationFailure $ "Unexpected error: " ++ show err
           Right msg -> do
-            amContent msg `shouldBe` Nothing
-            amToolCalls msg `shouldBe` []
+            (msg ^. amContent) `shouldBe` Nothing
+            (msg ^. amToolCalls) `shouldBe` []
       
       it "converts content-only accumulator" $ do
         let acc = accumulate emptyAccumulator (ContentDelta "Hello world")
         case accumulatorToAssistantMessage acc of
           Left err -> expectationFailure $ "Unexpected error: " ++ show err
           Right msg -> do
-            amContent msg `shouldBe` Just "Hello world"
-            amToolCalls msg `shouldBe` []
+            (msg ^. amContent) `shouldBe` Just "Hello world"
+            (msg ^. amToolCalls) `shouldBe` []
       
       it "converts tool call with valid JSON arguments" $ do
         let acc1 = accumulate emptyAccumulator (ToolCallStart 0 "call-1" "get_weather")
@@ -103,11 +104,11 @@ spec = do
         case accumulatorToAssistantMessage acc2 of
           Left err -> expectationFailure $ "Unexpected error: " ++ show err
           Right msg -> do
-            amContent msg `shouldBe` Nothing
-            length (amToolCalls msg) `shouldBe` 1
-            let tc = fromMaybe (error "Empty tool calls") $ viaNonEmpty head (amToolCalls msg)
-            tcId tc `shouldBe` "call-1"
-            tcName tc `shouldBe` "get_weather"
+            (msg ^. amContent) `shouldBe` Nothing
+            length (msg ^. amToolCalls) `shouldBe` 1
+            let tc = fromMaybe (error "Empty tool calls") $ viaNonEmpty head (msg ^. amToolCalls)
+            (tc ^. tcId) `shouldBe` "call-1"
+            (tc ^. tcName) `shouldBe` "get_weather"
       
       it "fails on invalid JSON arguments" $ do
         let acc1 = accumulate emptyAccumulator (ToolCallStart 0 "call-1" "tool")
@@ -120,4 +121,4 @@ spec = do
         let acc = accumulate emptyAccumulator (ToolCallStart 0 "call-1" "tool")
         case accumulatorToAssistantMessage acc of
           Left err -> expectationFailure $ "Unexpected error: " ++ show err
-          Right msg -> length (amToolCalls msg) `shouldBe` 1
+          Right msg -> length (msg ^. amToolCalls) `shouldBe` 1

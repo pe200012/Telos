@@ -1,6 +1,7 @@
 module Telos.MCP.IntegrationSpec (spec) where
 
 import           Data.Aeson              ( object, (.=) )
+import           Lens.Micro              ( (^.) )
 import           Test.Hspec
 import Telos.MCP.Client
 import Telos.MCP.ServerManager
@@ -11,13 +12,8 @@ spec = do
   describe "MCP Integration with real server" $ do
     describe "Client" $ do
       it "connects to filesystem MCP server and lists tools" $ do
-        let config = ServerConfig
-              { scName = "filesystem"
-              , scCommand = "npx"
-              , scArgs = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-              , scWorkDir = Nothing
-              , scEnv = Nothing
-              }
+        let config = makeServerConfig "filesystem" "npx" 
+              ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
         result <- connectToServer config
         case result of
           Left err -> expectationFailure $ "Failed to connect: " <> show err
@@ -27,20 +23,15 @@ spec = do
             case toolsResult of
               Left err -> expectationFailure $ "Failed to list tools: " <> show err
               Right ltr -> do
-                let tools = ltrTools ltr
+                let tools = ltr ^. ltrTools
                 length tools `shouldSatisfy` (> 0)
-                let toolNames = map tiName tools
+                let toolNames = map (^. tiName) tools
                 toolNames `shouldSatisfy` \names -> 
                   any (`elem` names) ["read_file", "write_file", "list_directory"]
 
       it "calls read_file tool successfully" $ do
-        let config = ServerConfig
-              { scName = "filesystem"
-              , scCommand = "npx"
-              , scArgs = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-              , scWorkDir = Nothing
-              , scEnv = Nothing
-              }
+        let config = makeServerConfig "filesystem" "npx"
+              ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
         result <- connectToServer config
         case result of
           Left err -> expectationFailure $ "Failed to connect: " <> show err
@@ -52,19 +43,14 @@ spec = do
             case callResult of
               Left err -> expectationFailure $ "Failed to call tool: " <> show err
               Right ctr -> do
-                ctrIsError ctr `shouldNotBe` Just True
-                ctrContent ctr `shouldBe` [TextPart "Hello MCP!"]
+                (ctr ^. ctrIsError) `shouldNotBe` Just True
+                (ctr ^. ctrContent) `shouldBe` [TextPart "Hello MCP!"]
 
     describe "ServerManager" $ do
       it "manages multiple tool aggregation" $ do
         mgr <- newServerManager
-        let config = ServerConfig
-              { scName = "filesystem"
-              , scCommand = "npx"
-              , scArgs = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-              , scWorkDir = Nothing
-              , scEnv = Nothing
-              }
+        let config = makeServerConfig "filesystem" "npx"
+              ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
         addResult <- addServer mgr config
         case addResult of
           Left err -> expectationFailure $ "Failed to add server: " <> show err

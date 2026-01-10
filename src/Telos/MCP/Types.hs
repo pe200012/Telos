@@ -46,6 +46,7 @@ module Telos.MCP.Types
   , ltrTools
   , ltrNextCursor
   , ToolInfo
+  , makeToolInfo
   , tiName
   , tiDescription
   , tiInputSchema
@@ -306,6 +307,13 @@ data ToolInfo = ToolInfo
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''ToolInfo
+
+makeToolInfo :: Text -> Value -> ToolInfo
+makeToolInfo name schema = ToolInfo
+  { _tiName = name
+  , _tiDescription = Nothing
+  , _tiInputSchema = schema
+  }
 
 instance FromJSON ToolInfo where
   parseJSON = withObject "ToolInfo" $ \o ->
