@@ -103,6 +103,7 @@ library
     , polysemy >=1.9
     , process >=1.6
     , relude
+    , safe
     , stm >=2.5
     , text
     , time
@@ -174,6 +175,7 @@ executable Telos-exe
     , polysemy >=1.9
     , process >=1.6
     , relude
+    , safe
     , stm >=2.5
     , text
     , time
@@ -245,6 +247,7 @@ executable test-agent
     , polysemy >=1.9
     , process >=1.6
     , relude
+    , safe
     , stm >=2.5
     , text
     , time
@@ -316,6 +319,7 @@ executable test-copilot
     , polysemy >=1.9
     , process >=1.6
     , relude
+    , safe
     , stm >=2.5
     , text
     , time
@@ -400,6 +404,7 @@ test-suite Telos-test
     , process >=1.6
     , quickcheck-instances
     , relude
+    , safe
     , stm >=2.5
     , text
     , time

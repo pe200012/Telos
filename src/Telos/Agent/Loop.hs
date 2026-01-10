@@ -17,7 +17,7 @@ module Telos.Agent.Loop
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 
-import           Lens.Micro                ( (.~), (^.), non )
+import           Lens.Micro                ( (.~), (^.), non, _last )
 
 import           Polysemy                  ( Embed, Members, Sem, embed )
 
@@ -35,6 +35,7 @@ import           Telos.Agent.Context       ( AgentContext
 import           Telos.Agent.Interrupt     ( checkInterrupted )
 import           Telos.Agent.Streaming     ( StreamConsumeResult(..), consumeStreamWithInterrupt )
 import qualified Telos.Core.Types          as Core
+import           Telos.Core.Types          ( _AssistantMsg )
 import           Telos.Effect.LLM          ( LLM, chat, chatStream )
 import           Telos.Effect.Logger       ( Logger, logDebug, logInfo, logWarn )
 import           Telos.Effect.MCP          ( ContentItem(..), MCP, ToolResult, callTool, trContent, trIsError )
@@ -118,9 +119,7 @@ runAgentLoopStreaming ctx userInput = do
               history <- embed $ getHistory c
               let partialResponse = extractLastAssistantContent history
               pure $ AgentMaxIterations partialResponse
-            else do
-              result <- agentStepStreaming c
-              case result of
+            else agentStepStreaming c >>= \case
                 Left done -> pure done
                 Right ()  -> loop c
 
@@ -264,12 +263,10 @@ formatToolResult result = T.intercalate "\n" $ map formatContentItem (result ^. 
       ImageContent mime _ -> "[Image: " <> mime <> "]"
       EmbeddedResource uri txt -> "[Resource: " <> uri <> "]\n" <> txt
 
+-- | Extract the last assistant message content from history
+-- Uses Prism to cleanly filter for AssistantMsg constructors
 extractLastAssistantContent :: [ Core.Message ] -> Text
-extractLastAssistantContent = go ""
-  where
-    go acc [] = acc
-    go _ (Core.AssistantMsg am : rest) = go (fromMaybe "" $ am ^. Core.amContent) rest
-    go acc (_ : rest) = go acc rest
+extractLastAssistantContent msgs = msgs ^. _last . _AssistantMsg . Core.amContent . non ""
 
 mcpToolToCoreTool :: Text -> MCP.ToolInfo -> Core.Tool
 mcpToolToCoreTool serverName ti

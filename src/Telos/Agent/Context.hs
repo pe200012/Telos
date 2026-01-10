@@ -19,6 +19,7 @@ module Telos.Agent.Context
   , resetIteration
   ) where
 
+import           Lens.Micro          ( (^.) )
 import           Lens.Micro.TH       ( makeLenses )
 
 import           Telos.Agent.Config  ( AgentConfig )
@@ -49,30 +50,30 @@ newAgentContext cfg = do
     }
 
 addMessage :: AgentContext -> Message -> IO ()
-addMessage ctx msg = atomically $ modifyTVar' (_ctxHistory ctx) (++ [ msg ])
+addMessage ctx msg = atomically $ modifyTVar' (ctx ^. ctxHistory) (++ [ msg ])
 
 getHistory :: AgentContext -> IO [ Message ]
-getHistory ctx = readTVarIO (_ctxHistory ctx)
+getHistory ctx = readTVarIO (ctx ^. ctxHistory)
 
 setHistory :: AgentContext -> [ Message ] -> IO ()
-setHistory ctx msgs = atomically $ writeTVar (_ctxHistory ctx) msgs
+setHistory ctx msgs = atomically $ writeTVar (ctx ^. ctxHistory) msgs
 
 clearHistory :: AgentContext -> IO ()
-clearHistory ctx = atomically $ writeTVar (_ctxHistory ctx) []
+clearHistory ctx = atomically $ writeTVar (ctx ^. ctxHistory) []
 
 getTools :: AgentContext -> IO [ Tool ]
-getTools ctx = readTVarIO (_ctxTools ctx)
+getTools ctx = readTVarIO (ctx ^. ctxTools)
 
 registerTools :: AgentContext -> [ Tool ] -> IO ()
-registerTools ctx tools = atomically $ writeTVar (_ctxTools ctx) tools
+registerTools ctx tools = atomically $ writeTVar (ctx ^. ctxTools) tools
 
 getIterationCount :: AgentContext -> IO Int
-getIterationCount ctx = readTVarIO (_ctxIteration ctx)
+getIterationCount ctx = readTVarIO (ctx ^. ctxIteration)
 
 incrementIteration :: AgentContext -> IO Int
 incrementIteration ctx = atomically $ do
-  modifyTVar' (_ctxIteration ctx) (+ 1)
-  readTVar (_ctxIteration ctx)
+  modifyTVar' (ctx ^. ctxIteration) (+ 1)
+  readTVar (ctx ^. ctxIteration)
 
 resetIteration :: AgentContext -> IO ()
-resetIteration ctx = atomically $ writeTVar (_ctxIteration ctx) 0
+resetIteration ctx = atomically $ writeTVar (ctx ^. ctxIteration) 0

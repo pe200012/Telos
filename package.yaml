@@ -1,14 +1,14 @@
-name:                Telos
-version:             0.1.0.0
-github:              "pe200012/Telos"
-license:             BSD-3-Clause
-author:              "pe200012"
-maintainer:          "1326263755@qq.com"
-copyright:           "2026 pe200012"
+name: Telos
+version: 0.1.0.0
+github: "pe200012/Telos"
+license: BSD-3-Clause
+author: "pe200012"
+maintainer: "1326263755@qq.com"
+copyright: "2026 pe200012"
 
 extra-source-files:
-- README.md
-- CHANGELOG.md
+  - README.md
+  - CHANGELOG.md
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
@@ -17,174 +17,175 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/pe200012/Telos#readme>
+description: Please see the README on GitHub at <https://github.com/pe200012/Telos#readme>
 
 dependencies:
-- base >= 4.7 && < 5
-- relude
-# Text and ByteString
-- text
-- bytestring
-# JSON
-- aeson >= 2.0
-# Containers
-- containers
-- unordered-containers
-- vector
-# Effects
-- polysemy >= 1.9
-# Streaming
-- conduit >= 1.3
-- conduit-extra
-# HTTP
-- http-client >= 0.7
-- http-client-tls
-- http-types
-- http-conduit
-# Process management
-- process >= 1.6
-# Concurrency
-- async >= 2.2
-- stm >= 2.5
-- unliftio
-# Time
-- time
-# File system
-- filepath
-- directory
-# Transformers
-- mtl
-- transformers
-- exceptions
-# Unix (for signal handling)
-- unix
-# Lenses
-- microlens
-- microlens-th
-- microlens-pro
+  - base >= 4.7 && < 5
+  - relude
+  - safe
+  # Text and ByteString
+  - text
+  - bytestring
+  # JSON
+  - aeson >= 2.0
+  # Containers
+  - containers
+  - unordered-containers
+  - vector
+  # Effects
+  - polysemy >= 1.9
+  # Streaming
+  - conduit >= 1.3
+  - conduit-extra
+  # HTTP
+  - http-client >= 0.7
+  - http-client-tls
+  - http-types
+  - http-conduit
+  # Process management
+  - process >= 1.6
+  # Concurrency
+  - async >= 2.2
+  - stm >= 2.5
+  - unliftio
+  # Time
+  - time
+  # File system
+  - filepath
+  - directory
+  # Transformers
+  - mtl
+  - transformers
+  - exceptions
+  # Unix (for signal handling)
+  - unix
+  # Lenses
+  - microlens
+  - microlens-th
+  - microlens-pro
 
 default-extensions:
-- BangPatterns
-- ConstraintKinds
-- DataKinds
-- DeriveAnyClass
-- DeriveFunctor
-- DeriveGeneric
-- DerivingStrategies
-- FlexibleContexts
-- FlexibleInstances
-- GADTs
-- GeneralizedNewtypeDeriving
-- LambdaCase
-- MultiParamTypeClasses
-- OverloadedStrings
-- PolyKinds
-- RankNTypes
-- ScopedTypeVariables
-- StandaloneDeriving
-- TemplateHaskell
-- TypeApplications
-- TypeFamilies
-- TypeOperators
+  - BangPatterns
+  - ConstraintKinds
+  - DataKinds
+  - DeriveAnyClass
+  - DeriveFunctor
+  - DeriveGeneric
+  - DerivingStrategies
+  - FlexibleContexts
+  - FlexibleInstances
+  - GADTs
+  - GeneralizedNewtypeDeriving
+  - LambdaCase
+  - MultiParamTypeClasses
+  - OverloadedStrings
+  - PolyKinds
+  - RankNTypes
+  - ScopedTypeVariables
+  - StandaloneDeriving
+  - TemplateHaskell
+  - TypeApplications
+  - TypeFamilies
+  - TypeOperators
 
 ghc-options:
-- -Wall
-- -Werror
-- -Wcompat
-- -Widentities
-- -Wincomplete-record-updates
-- -Wincomplete-uni-patterns
-- -Wmissing-export-lists
-- -Wmissing-home-modules
-- -Wpartial-fields
-- -Wredundant-constraints
+  - -Wall
+  - -Werror
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wmissing-export-lists
+  - -Wmissing-home-modules
+  - -Wpartial-fields
+  - -Wredundant-constraints
 
 library:
   source-dirs: src
   dependencies:
-  - name: base
-    mixin:
-      - hiding (Prelude)
-  - name: relude
-    mixin:
-      - (Relude as Prelude)
-      - ""
+    - name: base
+      mixin:
+        - hiding (Prelude)
+    - name: relude
+      mixin:
+        - (Relude as Prelude)
+        - ""
 
 executables:
   Telos-exe:
-    main:                Main.hs
-    source-dirs:         app
+    main: Main.hs
+    source-dirs: app
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
     dependencies:
-    - Telos
-    - name: base
-      mixin:
-        - hiding (Prelude)
-    - name: relude
-      mixin:
-        - (Relude as Prelude)
-        - ""
+      - Telos
+      - name: base
+        mixin:
+          - hiding (Prelude)
+      - name: relude
+        mixin:
+          - (Relude as Prelude)
+          - ""
 
   test-copilot:
-    main:                TestCopilot.hs
-    source-dirs:         app
+    main: TestCopilot.hs
+    source-dirs: app
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    - -main-is
-    - TestCopilot
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+      - -main-is
+      - TestCopilot
     dependencies:
-    - Telos
-    - name: base
-      mixin:
-        - hiding (Prelude)
-    - name: relude
-      mixin:
-        - (Relude as Prelude)
-        - ""
+      - Telos
+      - name: base
+        mixin:
+          - hiding (Prelude)
+      - name: relude
+        mixin:
+          - (Relude as Prelude)
+          - ""
 
   test-agent:
-    main:                TestAgent.hs
-    source-dirs:         app
+    main: TestAgent.hs
+    source-dirs: app
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    - -main-is
-    - TestAgent
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+      - -main-is
+      - TestAgent
     dependencies:
-    - Telos
-    - name: base
-      mixin:
-        - hiding (Prelude)
-    - name: relude
-      mixin:
-        - (Relude as Prelude)
-        - ""
+      - Telos
+      - name: base
+        mixin:
+          - hiding (Prelude)
+      - name: relude
+        mixin:
+          - (Relude as Prelude)
+          - ""
 
 tests:
   Telos-test:
-    main:                Spec.hs
-    source-dirs:         test
+    main: Spec.hs
+    source-dirs: test
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
     dependencies:
-    - Telos
-    - hspec >= 2.10
-    - hspec-discover
-    - QuickCheck
-    - quickcheck-instances
-    - aeson
-    - name: base
-      mixin:
-        - hiding (Prelude)
-    - name: relude
-      mixin:
-        - (Relude as Prelude)
-        - ""
+      - Telos
+      - hspec >= 2.10
+      - hspec-discover
+      - QuickCheck
+      - quickcheck-instances
+      - aeson
+      - name: base
+        mixin:
+          - hiding (Prelude)
+      - name: relude
+        mixin:
+          - (Relude as Prelude)
+          - ""

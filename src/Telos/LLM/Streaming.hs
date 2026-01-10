@@ -25,6 +25,7 @@ import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as TE
 
 import           Lens.Micro               ( (^.), non )
+import           Lens.Micro.Pro           ( at, (?~) )
 import           Lens.Micro.TH            ( makeLenses )
 
 import           Telos.Core.Types
@@ -46,7 +47,7 @@ import           Telos.LLM.Copilot.Client ( ChatResponse(..)
 -- | Builder for accumulating tool call chunks (defined first since StreamCollector uses it)
 data ToolCallBuilder
   = ToolCallBuilder { _tcbId :: Maybe Text, _tcbName :: Maybe Text, _tcbArguments :: Text }
-  deriving stock ( Show )
+  deriving stock ( Show, Eq )
 
 makeLenses ''ToolCallBuilder
 
@@ -102,7 +103,7 @@ processToolCallChunk collector chunk = do
   let idx = chunk ^. tccIndex
 
   currentMap <- readIORef (collector ^. scToolCalls)
-  let current = Map.findWithDefault (ToolCallBuilder Nothing Nothing "") idx currentMap
+  let current = currentMap ^. at idx . non (ToolCallBuilder Nothing Nothing "")
 
   -- Update builder with new data
   let newId = firstJust (chunk ^. tccId) (current ^. tcbId)
@@ -110,7 +111,7 @@ processToolCallChunk collector chunk = do
   let newArgs = (current ^. tcbArguments) <> ((chunk ^. tccFunction) >>= (^. fcArguments)) ^. non ""
 
   let updated = ToolCallBuilder newId newName newArgs
-  writeIORef (collector ^. scToolCalls) (Map.insert idx updated currentMap)
+  writeIORef (collector ^. scToolCalls) (currentMap & at idx ?~ updated)
 
   -- Generate event based on what's new
   case ( chunk ^. tccId, (chunk ^. tccFunction) >>= (^. fcName) ) of

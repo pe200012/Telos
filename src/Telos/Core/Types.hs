@@ -3,6 +3,11 @@
 module Telos.Core.Types
   ( Role(..)
   , Message(..)
+  -- Message Prisms
+  , _UserMessage
+  , _AssistantMsg
+  , _SystemMessage
+  , _ToolResultMessage
   , ToolCall
   , makeToolCall
   , tcId
@@ -14,12 +19,21 @@ module Telos.Core.Types
   , toolDescription
   , toolInputSchema
   , StreamEvent(ContentDelta, ToolCallStart, ToolCallDelta, Ping)
+  -- StreamEvent Prisms
+  , _ContentDelta
+  , _ToolCallStart
+  , _ToolCallDelta
+  , _Ping
   , tcsIndex
   , tcsId
   , tcsName
   , tcdIndex
   , tcdArguments
   , StreamResult(..)
+  -- StreamResult Prisms
+  , _StreamCompleted
+  , _StreamInterrupted
+  , _StreamFailed
   , PartialMessage
   , makePartialMessage
   , pmContentSoFar
@@ -59,6 +73,7 @@ import           Data.Aeson          ( (.:)
                                      )
 
 import           Lens.Micro          ( (^.), non )
+import           Lens.Micro.Pro      ( Prism', prism' )
 import           Lens.Micro.TH       ( makeLenses )
 
 data Role = User | Assistant | System | ToolRole
@@ -199,6 +214,27 @@ data Message
 
 makeLenses ''Message
 
+-- | Prisms for Message sum type
+_UserMessage :: Prism' Message Text
+_UserMessage = prism' UserMessage $ \case
+  UserMessage c -> Just c
+  _             -> Nothing
+
+_AssistantMsg :: Prism' Message AssistantMessage
+_AssistantMsg = prism' AssistantMsg $ \case
+  AssistantMsg am -> Just am
+  _               -> Nothing
+
+_SystemMessage :: Prism' Message Text
+_SystemMessage = prism' SystemMessage $ \case
+  SystemMessage c -> Just c
+  _               -> Nothing
+
+_ToolResultMessage :: Prism' Message (Text, Text, Text, Bool)
+_ToolResultMessage = prism' (\(cid, n, r, e) -> ToolResultMessage cid n r e) $ \case
+  ToolResultMessage cid n r e -> Just (cid, n, r, e)
+  _                           -> Nothing
+
 instance ToJSON Message where
   toJSON = \case
     UserMessage content -> object [ "role" .= User, "content" .= content ]
@@ -220,6 +256,27 @@ data StreamEvent
   deriving stock ( Eq, Show )
 
 makeLenses ''StreamEvent
+
+-- | Prisms for StreamEvent sum type
+_ContentDelta :: Prism' StreamEvent Text
+_ContentDelta = prism' ContentDelta $ \case
+  ContentDelta t -> Just t
+  _              -> Nothing
+
+_ToolCallStart :: Prism' StreamEvent (Int, Text, Text)
+_ToolCallStart = prism' (\(i, tid, n) -> ToolCallStart i tid n) $ \case
+  ToolCallStart i tid n -> Just (i, tid, n)
+  _                     -> Nothing
+
+_ToolCallDelta :: Prism' StreamEvent (Int, Text)
+_ToolCallDelta = prism' (\(i, args) -> ToolCallDelta i args) $ \case
+  ToolCallDelta i args -> Just (i, args)
+  _                    -> Nothing
+
+_Ping :: Prism' StreamEvent ()
+_Ping = prism' (const Ping) $ \case
+  Ping -> Just ()
+  _    -> Nothing
 
 data PartialToolCall = PartialToolCall
   { _ptcId             :: Maybe Text
@@ -258,6 +315,22 @@ data StreamResult
   | StreamInterrupted PartialMessage
   | StreamFailed Text
   deriving stock ( Eq, Show )
+
+-- | Prisms for StreamResult sum type
+_StreamCompleted :: Prism' StreamResult AssistantMessage
+_StreamCompleted = prism' StreamCompleted $ \case
+  StreamCompleted am -> Just am
+  _                  -> Nothing
+
+_StreamInterrupted :: Prism' StreamResult PartialMessage
+_StreamInterrupted = prism' StreamInterrupted $ \case
+  StreamInterrupted pm -> Just pm
+  _                    -> Nothing
+
+_StreamFailed :: Prism' StreamResult Text
+_StreamFailed = prism' StreamFailed $ \case
+  StreamFailed t -> Just t
+  _              -> Nothing
 
 data ProviderInfo = ProviderInfo
   { _piName          :: Text
