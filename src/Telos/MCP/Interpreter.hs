@@ -1,6 +1,6 @@
 module Telos.MCP.Interpreter ( runMCPWithManager ) where
 
-import           Lens.Micro              ( (.~), (^.) )
+import           Lens.Micro              ( (.~), (^.), non )
 
 import           Polysemy                ( Embed, Member, Sem, embed, interpret )
 
@@ -60,12 +60,12 @@ runMCPWithManager mgr = interpret $ \case
 convertToolResult :: Types.CallToolResult -> ToolResult
 convertToolResult ctr
   = makeToolResult (map convertContent (ctr ^. Types.ctrContent))
-  & trIsError .~ fromMaybe False (ctr ^. Types.ctrIsError)
+  & trIsError .~ (ctr ^. Types.ctrIsError . non False)
 
 convertContent :: Types.ContentPart -> ContentItem
 convertContent (Types.TextPart txt) = TextContent txt
 convertContent (Types.ImagePart dat mime) = ImageContent dat mime
-convertContent (Types.ResourcePart uri _ mText) = TextContent $ fromMaybe uri mText
+convertContent (Types.ResourcePart uri _ mText) = TextContent $ mText ^. non uri
 
 fetchResources :: MCPConnection -> IO (Either MCPError [ Resource ])
 fetchResources conn = do
