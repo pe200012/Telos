@@ -6,6 +6,8 @@ import qualified Data.IntMap.Strict    as IntMap
 
 import           Lens.Micro            ( (^.) )
 
+import           Relude
+
 import           Telos.Agent.Streaming
 import           Telos.Core.Types
 

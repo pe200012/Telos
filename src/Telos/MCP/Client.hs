@@ -37,6 +37,8 @@ import qualified Data.Text                 as T
 import           Lens.Micro                ( (.~), (?~), (^.) )
 import           Lens.Micro.TH             ( makeLenses )
 
+import           Relude
+
 import           Telos.Core.Error          ( MCPError(..) )
 import           Telos.MCP.JsonRpc
 import           Telos.MCP.Transport.StdIO

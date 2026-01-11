@@ -9,6 +9,9 @@ module Telos.Prompt.Builder
   , agentsRulesSection
   ) where
 
+import           Relude
+
+
 import qualified Data.Text            as T
 
 import           Lens.Micro           ( (^.), non )

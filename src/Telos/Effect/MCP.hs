@@ -23,15 +23,17 @@ module Telos.Effect.MCP
   , resDescription
   ) where
 
-import           Data.Aeson           ( Value )
+import           Data.Aeson       ( Value )
 
-import           Lens.Micro.TH        ( makeLenses )
+import           Lens.Micro.TH    ( makeLenses )
 
-import           Polysemy             ( makeSem )
+import           Polysemy         ( makeSem )
 
-import           Telos.Core.Error     ( MCPError )
-import           Telos.Core.Types     ( Tool )
-import           Telos.MCP.Types      ( ResourceContents )
+import           Relude
+
+import           Telos.Core.Error ( MCPError )
+import           Telos.Core.Types ( Tool )
+import           Telos.MCP.Types  ( ResourceContents )
 
 data ContentItem
   = TextContent Text

@@ -2,6 +2,9 @@
 
 module Telos.Tool.Grep ( grepTool ) where
 
+import           Relude
+
+
 import qualified Data.Aeson           as Aeson
 import           Data.Aeson           ( (.:), (.:?) )
 import           Data.Aeson.Types     ( parseEither )

@@ -17,54 +17,49 @@ module Telos.CLI.Repl
   , rsAuth
   ) where
 
-import           Control.Exception           ( IOException, catch )
-import qualified Data.Text                   as T
-import qualified Data.Text.IO                as TIO
-import           Data.Time                   ( defaultTimeLocale, formatTime, getCurrentTime )
+import           Control.Exception       ( IOException, catch )
 
-import           Lens.Micro                  ( (.~), (^.), (?~) )
+import qualified Data.Text               as T
+import qualified Data.Text.IO            as TIO
+import           Data.Time               ( defaultTimeLocale, formatTime, getCurrentTime )
 
-import           System.Directory            ( doesDirectoryExist, getCurrentDirectory )
-import           System.IO                   ( hFlush, stdout )
-import           System.Info                 ( os )
+import           Lens.Micro              ( (.~), (?~), (^.) )
 
-import           Telos.Agent.Config          ( acMaxIterations, acPromptConfig, makeAgentConfig )
-import           Telos.Agent.Context         ( AgentContext
-                                             , clearHistory
-                                             , ctxConfig
-                                             , getHistory
-                                             , newAgentContext
-                                             , registerTools
-                                             , setHistory
-                                             )
-import           Telos.Agent.Loop            ( AgentResult(..) )
-import           Telos.CLI.Config            ( CliConfig
-                                             , ccMaxIterations
-                                             , ccMcpServers
-                                             , ccModel
-                                             )
-import           Telos.MCP.ServerManager     ( ServerManager
-                                             , ServerStatus(..)
-                                             , aggregateTools
-                                             , getServerStatus
-                                             , newServerManager
-                                             , registerServer
-                                             , shutdownAll
-                                             )
-import           Telos.Core.Types            ( toolDescription, toolName )
-import           Telos.LLM.Copilot.Auth      ( CopilotAuth )
-import           Telos.Storage.Session       ( createSession
-                                             , listSessions
-                                             , loadContextMessages
-                                             , saveContextMessages
-                                             )
-import           Telos.Storage.Types         ( SessionId(..)
-                                             , siId
-                                             , siTitle
-                                             , siUpdatedAt
-                                             )
-import           Telos.Tool.Registry         ( builtinToolList )
-import           Telos.Prompt.Types          ( makeSystemPromptConfig )
+import           Relude
+
+import           System.Directory        ( doesDirectoryExist, getCurrentDirectory )
+import           System.IO               ( hFlush, stdout )
+import           System.Info             ( os )
+
+import           Telos.Agent.Config      ( acMaxIterations, acPromptConfig, makeAgentConfig )
+import           Telos.Agent.Context     ( AgentContext
+                                         , clearHistory
+                                         , ctxConfig
+                                         , getHistory
+                                         , newAgentContext
+                                         , registerTools
+                                         , setHistory
+                                         )
+import           Telos.Agent.Loop        ( AgentResult(..) )
+import           Telos.CLI.Config        ( CliConfig, ccMaxIterations, ccMcpServers, ccModel )
+import           Telos.Core.Types        ( toolDescription, toolName )
+import           Telos.LLM.Copilot.Auth  ( CopilotAuth )
+import           Telos.MCP.ServerManager ( ServerManager
+                                         , ServerStatus(..)
+                                         , aggregateTools
+                                         , getServerStatus
+                                         , newServerManager
+                                         , registerServer
+                                         , shutdownAll
+                                         )
+import           Telos.Prompt.Types      ( makeSystemPromptConfig )
+import           Telos.Storage.Session   ( createSession
+                                         , listSessions
+                                         , loadContextMessages
+                                         , saveContextMessages
+                                         )
+import           Telos.Storage.Types     ( SessionId(..), siId, siTitle, siUpdatedAt )
+import           Telos.Tool.Registry     ( builtinToolList )
 
 -- | REPL state
 data ReplState
@@ -84,20 +79,18 @@ newReplState config auth = do
 
   -- Create agent config (prompt config will be set in ensureToolsLoaded)
   let agentConfig
-        = makeAgentConfig (config ^. ccModel)
-        & acMaxIterations .~ (config ^. ccMaxIterations)
+        = makeAgentConfig (config ^. ccModel) & acMaxIterations .~ (config ^. ccMaxIterations)
 
   -- Create agent context (initially no tools - will be loaded lazily)
   agentCtx <- newAgentContext agentConfig
 
   pure
-    $ ReplState
-    { rsConfig        = config
-    , rsServerManager = serverMgr
-    , rsAgentContext  = agentCtx
-    , rsAuth          = auth
-    , rsSessionId     = Nothing
-    }
+    $ ReplState { rsConfig        = config
+                , rsServerManager = serverMgr
+                , rsAgentContext  = agentCtx
+                , rsAuth          = auth
+                , rsSessionId     = Nothing
+                }
 
 -- | REPL commands
 data ReplCommand
@@ -123,17 +116,21 @@ parseCommand input
   | cmd `elem` [ "/help", "/h", "/?" ] = CmdHelp
   | cmd == "/sessions" = CmdSessions
   | "/load " `T.isPrefixOf` cmd = CmdLoad (T.strip $ T.drop 6 input)
-  | "/save" `T.isPrefixOf` cmd = CmdSave (let arg = T.strip $ T.drop 5 input
-                                          in if T.null arg then Nothing else Just arg)
+  | "/save" `T.isPrefixOf` cmd
+    = CmdSave
+      (let
+           arg = T.strip $ T.drop 5 input
+         in 
+           if T.null arg
+             then Nothing
+             else Just arg)
   | cmd == "/new" = CmdNew
   | otherwise = CmdMessage input
   where
     cmd = T.toLower $ T.strip input
 
 -- | Run the REPL loop
-runRepl :: ReplState
-        -> (ReplState -> Text -> IO AgentResult)
-        -> IO ()
+runRepl :: ReplState -> (ReplState -> Text -> IO AgentResult) -> IO ()
 runRepl initialState runAgent = do
   printWelcome
   loop initialState
@@ -143,59 +140,58 @@ runRepl initialState runAgent = do
       System.IO.hFlush System.IO.stdout
       mInput <- tryGetLine
       case mInput of
-        Nothing -> do
+        Nothing    -> do
           TIO.putStrLn ""
           TIO.putStrLn "Goodbye!"
           shutdownAll (rsServerManager replState)
         Just input -> handleInput replState input
 
-    handleInput replState input =
-      case parseCommand input of
-        CmdQuit        -> do
-          TIO.putStrLn "Goodbye!"
-          shutdownAll (rsServerManager replState)
+    handleInput replState input = case parseCommand input of
+      CmdQuit        -> do
+        TIO.putStrLn "Goodbye!"
+        shutdownAll (rsServerManager replState)
 
-        CmdClear       -> do
-          clearHistory (rsAgentContext replState)
-          TIO.putStrLn "Conversation history cleared."
-          loop replState
+      CmdClear       -> do
+        clearHistory (rsAgentContext replState)
+        TIO.putStrLn "Conversation history cleared."
+        loop replState
 
-        CmdTools       -> do
-          handleToolsCommand replState
-          loop replState
+      CmdTools       -> do
+        handleToolsCommand replState
+        loop replState
 
-        CmdServers     -> do
-          handleServersCommand replState
-          loop replState
+      CmdServers     -> do
+        handleServersCommand replState
+        loop replState
 
-        CmdHelp        -> do
-          printHelp
-          loop replState
+      CmdHelp        -> do
+        printHelp
+        loop replState
 
-        CmdSessions    -> do
-          handleSessionsCommand
-          loop replState
+      CmdSessions    -> do
+        handleSessionsCommand
+        loop replState
 
-        CmdLoad prefix -> do
-          replState' <- handleLoadCommand replState prefix
-          loop replState'
+      CmdLoad prefix -> do
+        replState' <- handleLoadCommand replState prefix
+        loop replState'
 
-        CmdSave mTitle -> do
-          replState' <- handleSaveCommand replState mTitle
-          loop replState'
+      CmdSave mTitle -> do
+        replState' <- handleSaveCommand replState mTitle
+        loop replState'
 
-        CmdNew         -> do
-          replState' <- handleNewCommand replState
-          loop replState'
+      CmdNew         -> do
+        replState' <- handleNewCommand replState
+        loop replState'
 
-        CmdMessage ""  -> loop replState
+      CmdMessage ""  -> loop replState
 
-        CmdMessage msg -> do
-          replState' <- ensureToolsLoaded replState
-          result <- runAgent replState' msg
-          handleAgentResult result
-          replState'' <- autoSave replState'
-          loop replState''
+      CmdMessage msg -> do
+        replState' <- ensureToolsLoaded replState
+        result <- runAgent replState' msg
+        handleAgentResult result
+        replState'' <- autoSave replState'
+        loop replState''
 
     tryGetLine :: IO (Maybe Text)
     tryGetLine = (Just <$> TIO.getLine) `catch` handleEOF
@@ -208,7 +204,7 @@ ensureToolsLoaded :: ReplState -> IO ReplState
 ensureToolsLoaded replState = do
   toolsResult <- aggregateTools (rsServerManager replState)
   let mcpTools = case toolsResult of
-        Left err -> do
+        Left err        -> do
           -- Log warning but continue with builtin tools only
           let _ = err  -- suppress unused warning
           []
@@ -222,9 +218,9 @@ ensureToolsLoaded replState = do
   cwd <- getCurrentDirectory
   isGit <- doesDirectoryExist (cwd <> "/.git")
   now <- getCurrentTime
-  let dateStr = T.pack $ formatTime defaultTimeLocale "%Y-%m-%d" now
-      platform = T.pack os
-      modelId = rsConfig replState ^. ccModel
+  let dateStr      = T.pack $ formatTime defaultTimeLocale "%Y-%m-%d" now
+      platform     = T.pack os
+      modelId      = rsConfig replState ^. ccModel
       promptConfig = makeSystemPromptConfig cwd isGit platform allTools modelId dateStr
 
   -- Update agent config with prompt config
@@ -286,8 +282,8 @@ handleSessionsCommand = do
       TIO.putStrLn "Sessions:"
       TIO.putStrLn ""
       forM_ sessions $ \s -> do
-        let sid = unSessionId (s ^. siId)
-            title = s ^. siTitle
+        let sid     = unSessionId (s ^. siId)
+            title   = s ^. siTitle
             updated = formatTime defaultTimeLocale "%Y-%m-%d %H:%M" (s ^. siUpdatedAt)
         TIO.putStrLn $ "  " <> sid <> " | " <> title <> " | " <> T.pack updated
 
@@ -296,19 +292,23 @@ handleLoadCommand replState prefix = do
   sessions <- listSessions
   let matches = filter (T.isPrefixOf prefix . unSessionId . (^. siId)) sessions
   case matches of
-    [] -> do
+    []    -> do
       TIO.putStrLn $ "No session found matching: " <> prefix
       pure replState
-    [s] -> do
+    [ s ] -> do
       let sid = s ^. siId
       messages <- loadContextMessages sid
       setHistory (rsAgentContext replState) messages
-      TIO.putStrLn $ "Loaded session: " <> (s ^. siTitle) <> " (" <> T.pack (show $ length messages) <> " messages)"
+      TIO.putStrLn
+        $ "Loaded session: "
+        <> (s ^. siTitle)
+        <> " ("
+        <> T.pack (show $ length messages)
+        <> " messages)"
       pure replState { rsSessionId = Just sid }
-    _ -> do
+    _     -> do
       TIO.putStrLn "Multiple sessions match. Be more specific:"
-      forM_ matches $ \s ->
-        TIO.putStrLn $ "  " <> unSessionId (s ^. siId)
+      forM_ matches $ \s -> TIO.putStrLn $ "  " <> unSessionId (s ^. siId)
       pure replState
 
 handleSaveCommand :: ReplState -> Maybe Text -> IO ReplState
@@ -319,7 +319,7 @@ handleSaveCommand replState mTitle = do
       saveContextMessages sid history
       TIO.putStrLn "Session saved."
       pure replState
-    Nothing -> do
+    Nothing  -> do
       info <- createSession mTitle
       let sid = info ^. siId
       saveContextMessages sid history
@@ -334,7 +334,7 @@ handleNewCommand replState = do
       Just sid -> do
         saveContextMessages sid history
         TIO.putStrLn "Previous session saved."
-      Nothing -> do
+      Nothing  -> do
         info <- createSession Nothing
         saveContextMessages (info ^. siId) history
         TIO.putStrLn $ "Previous session saved as: " <> unSessionId (info ^. siId)
@@ -350,7 +350,7 @@ autoSave replState = do
       history <- getHistory (rsAgentContext replState)
       saveContextMessages sid history
       pure replState
-    Nothing -> pure replState
+    Nothing  -> pure replState
 
 -- | Handle agent result
 handleAgentResult :: AgentResult -> IO ()

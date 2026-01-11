@@ -21,6 +21,8 @@ import           Lens.Micro                ( (.~), (^.), _last, non )
 
 import           Polysemy                  ( Embed, Members, Sem, embed )
 
+import           Relude
+
 import           Telos.Agent.Config        ( acMaxIterations, acPromptConfig )
 import           Telos.Agent.Context       ( AgentContext
                                            , addMessage
@@ -46,10 +48,10 @@ import           Telos.Effect.MCP          ( ContentItem(..)
                                            , trContent
                                            , trIsError
                                            )
-import           Telos.Effect.StreamOutput  ( StreamOutput, flushOutput, outputNewline )
-import qualified Telos.MCP.Types            as MCP
-import           Telos.Prompt.Builder       ( buildSystemPrompt )
-import           Telos.Tool.Registry        ( executeBuiltinTool )
+import           Telos.Effect.StreamOutput ( StreamOutput, flushOutput, outputNewline )
+import qualified Telos.MCP.Types           as MCP
+import           Telos.Prompt.Builder      ( buildSystemPrompt )
+import           Telos.Tool.Registry       ( executeBuiltinTool )
 import qualified Telos.Tool.Types          as ToolTypes
 
 data AgentResult

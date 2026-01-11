@@ -10,6 +10,8 @@ import           Lens.Micro               ( (^.), non )
 import           Network.HTTP.Client      ( Manager )
 import           Network.HTTP.Client.TLS  ( newTlsManager )
 
+import           Relude
+
 import           Telos.Core.Types         ( Message(UserMessage), amContent )
 import           Telos.LLM.Copilot.Auth
 import           Telos.LLM.Copilot.Client

@@ -12,6 +12,8 @@ import           Lens.Micro               ( (.~), (^.) )
 
 import           Polysemy                 ( Embed, InterpreterFor, Member, embed, interpret )
 
+import           Relude
+
 import           Telos.Core.Error         ( LLMError(..) )
 import           Telos.Core.Types         ( AssistantMessage
                                           , StreamEvent(..)

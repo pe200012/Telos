@@ -13,6 +13,8 @@ import           Control.Exception       ( bracket )
 
 import           Lens.Micro              ( (^.) )
 
+import           Relude
+
 import           System.Posix.Signals    ( Handler(Catch), installHandler, sigINT )
 
 import           Telos.Agent.Context     ( AgentContext, ctxInterrupt )

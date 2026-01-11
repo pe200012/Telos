@@ -18,6 +18,8 @@ import           Lens.Micro.TH    ( makeLenses )
 
 import           Polysemy         ( makeSem )
 
+import           Relude
+
 import qualified System.Process   as P
 
 import           Telos.Core.Error ( ProcessError )

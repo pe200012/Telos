@@ -25,6 +25,8 @@ import qualified Data.Text.Encoding      as TE
 import           Lens.Micro              ( (%~), (^.) )
 import           Lens.Micro.TH           ( makeLenses )
 
+import           Relude
+
 import           Telos.Core.Types
 
 data StreamAccumulator

@@ -19,15 +19,16 @@ module Telos.Prompt.Types
 
 import           Lens.Micro.TH    ( makeLenses )
 
+import           Relude
+
 import           Telos.Core.Types ( Tool )
 
 -- | A section of the system prompt
 data PromptSection
-  = PromptSection
-  { _psName     :: Text   -- ^ Section identifier (e.g., "identity", "tools")
-  , _psContent  :: Text   -- ^ The actual prompt content
-  , _psPriority :: Int    -- ^ Lower = earlier in final prompt
-  }
+  = PromptSection { _psName     :: Text   -- ^ Section identifier (e.g., "identity", "tools")
+                  , _psContent  :: Text   -- ^ The actual prompt content
+                  , _psPriority :: Int    -- ^ Lower = earlier in final prompt
+                  }
   deriving stock ( Eq, Show, Generic )
 
 makeLenses ''PromptSection
@@ -35,11 +36,7 @@ makeLenses ''PromptSection
 -- | Smart constructor for PromptSection
 makePromptSection :: Text -> Text -> Int -> PromptSection
 makePromptSection name content priority
-  = PromptSection
-  { _psName     = name
-  , _psContent  = content
-  , _psPriority = priority
-  }
+  = PromptSection { _psName = name, _psContent = content, _psPriority = priority }
 
 -- | Configuration for building system prompts
 data SystemPromptConfig
@@ -56,7 +53,8 @@ data SystemPromptConfig
 makeLenses ''SystemPromptConfig
 
 -- | Smart constructor for SystemPromptConfig
-makeSystemPromptConfig :: FilePath -> Bool -> Text -> [ Tool ] -> Text -> Text -> SystemPromptConfig
+makeSystemPromptConfig
+  :: FilePath -> Bool -> Text -> [ Tool ] -> Text -> Text -> SystemPromptConfig
 makeSystemPromptConfig workDir isGit platform tools modelId date
   = SystemPromptConfig
   { _spcWorkingDir  = workDir

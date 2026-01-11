@@ -11,21 +11,26 @@ module Telos.Storage.Session
   , loadContextMessages
   ) where
 
-import           Control.Exception    ( IOException, catch, evaluate )
-import qualified Data.Aeson           as Aeson
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Lazy.Char8 as BLC
-import qualified Data.Text            as T
-import           Data.Time            ( getCurrentTime )
-import           System.Directory     ( doesDirectoryExist
-                                      , listDirectory
-                                      , removeDirectoryRecursive
-                                      )
+import           Control.Exception          ( IOException, catch, evaluate )
 
-import           Telos.Core.Types     ( Message )
+import qualified Data.Aeson                 as Aeson
+import qualified Data.ByteString.Lazy       as BL
+import qualified Data.ByteString.Lazy.Char8 as BLC
+import qualified Data.Text                  as T
+import           Data.Time                  ( getCurrentTime )
+
+import           Lens.Micro                 ( (^.), non )
+
+import           Relude
+
+import           System.Directory           ( doesDirectoryExist
+                                            , listDirectory
+                                            , removeDirectoryRecursive
+                                            )
+
+import           Telos.Core.Types           ( Message )
 import           Telos.Storage.Path
 import           Telos.Storage.Types
-import           Lens.Micro           ( (^.), non )
 
 createSession :: Maybe Text -> IO SessionInfo
 createSession mTitle = do
@@ -62,7 +67,7 @@ readFileStrict path = do
   _ <- evaluate (BL.length content)
   pure content
 
-listSessions :: IO [SessionInfo]
+listSessions :: IO [ SessionInfo ]
 listSessions = do
   sessionsDir <- getSessionsDir
   exists <- doesDirectoryExist sessionsDir
@@ -70,8 +75,7 @@ listSessions = do
     then pure []
     else do
       entries <- listDirectory sessionsDir
-      sessions <- forM entries $ \entry ->
-        getSession (SessionId (T.pack entry))
+      sessions <- forM entries $ \entry -> getSession (SessionId (T.pack entry))
       pure $ sortBy (comparing (Down . _siUpdatedAt)) (catMaybes sessions)
 
 deleteSession :: SessionId -> IO ()
@@ -84,7 +88,7 @@ touchSession :: SessionId -> IO ()
 touchSession sid = do
   mInfo <- getSession sid
   case mInfo of
-    Nothing -> pure ()
+    Nothing   -> pure ()
     Just info -> do
       now <- getCurrentTime
       let updated = info { _siUpdatedAt = now }
@@ -97,12 +101,12 @@ appendMessage sid msg = do
   msgsPath <- getMessagesPath sid
   count <- getMessageCount sid
   let stored = StoredMessage count msg now
-      line = BLC.unpack (Aeson.encode stored) <> "\n"
+      line   = BLC.unpack (Aeson.encode stored) <> "\n"
 
   appendFile msgsPath line
   touchSession sid
 
-loadMessages :: SessionId -> IO [Message]
+loadMessages :: SessionId -> IO [ Message ]
 loadMessages sid = do
   msgsPath <- getMessagesPath sid
   catch (parseMessages msgsPath) handleNotFound
@@ -115,20 +119,20 @@ loadMessages sid = do
     parseLine line
       | BL.null line = Nothing
       | otherwise = case Aeson.eitherDecode line of
-          Left _       -> Nothing
-          Right stored -> Just (_smMessage stored)
+        Left _       -> Nothing
+        Right stored -> Just (_smMessage stored)
 
-    handleNotFound :: IOException -> IO [Message]
+    handleNotFound :: IOException -> IO [ Message ]
     handleNotFound _ = pure []
 
 getMessageCount :: SessionId -> IO Int
 getMessageCount sid = length <$> loadMessages sid
 
-saveContextMessages :: SessionId -> [Message] -> IO ()
+saveContextMessages :: SessionId -> [ Message ] -> IO ()
 saveContextMessages sid history = do
   existingCount <- getMessageCount sid
   let newMessages = drop existingCount history
   forM_ newMessages $ appendMessage sid
 
-loadContextMessages :: SessionId -> IO [Message]
+loadContextMessages :: SessionId -> IO [ Message ]
 loadContextMessages = loadMessages

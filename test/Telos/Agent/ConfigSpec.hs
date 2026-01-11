@@ -2,6 +2,8 @@ module Telos.Agent.ConfigSpec ( spec ) where
 
 import           Lens.Micro         ( (.~), (^.) )
 
+import           Relude
+
 import           Telos.Agent.Config
 
 import           Test.Hspec

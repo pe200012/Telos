@@ -14,6 +14,8 @@ import           Lens.Micro          ( (.~), (?~), (^.) )
 import           Polysemy
 import           Polysemy.Error
 
+import           Relude
+
 import           Telos.Agent.Config  ( acMaxIterations, defaultAgentConfig, makeAgentConfig )
 import           Telos.Agent.Context ( getHistory, newAgentContext )
 import           Telos.Agent.Loop

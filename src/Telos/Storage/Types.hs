@@ -15,6 +15,9 @@ module Telos.Storage.Types
   , makeSessionInfo
   ) where
 
+import           Relude
+
+
 import           Data.Aeson        ( FromJSON, ToJSON )
 import           Data.Time         ( UTCTime, getCurrentTime )
 import qualified Data.UUID         as UUID

@@ -4,6 +4,8 @@ import           Lens.Micro              ( (.~), (^.), non )
 
 import           Polysemy                ( Embed, Member, Sem, embed, interpret )
 
+import           Relude
+
 import           Telos.Core.Error        ( MCPError(..) )
 import           Telos.Effect.MCP
 import           Telos.MCP.Client        ( MCPConnection )
@@ -27,8 +29,8 @@ runMCPWithManager mgr = interpret $ \case
   CallTool tName arguments -> embed $ do
     mServerConn <- findToolServer mgr tName
     case mServerConn of
-      Nothing -> pure $ Left $ MCPToolNotFound tName
-      Just (_, conn) -> do
+      Nothing          -> pure $ Left $ MCPToolNotFound tName
+      Just ( _, conn ) -> do
         result <- Client.callTool conn tName (Just arguments)
         pure $ fmap convertToolResult result
 
@@ -63,8 +65,8 @@ convertToolResult ctr
   & trIsError .~ (ctr ^. Types.ctrIsError . non False)
 
 convertContent :: Types.ContentPart -> ContentItem
-convertContent (Types.TextPart txt) = TextContent txt
-convertContent (Types.ImagePart dat mime) = ImageContent dat mime
+convertContent (Types.TextPart txt)             = TextContent txt
+convertContent (Types.ImagePart dat mime)       = ImageContent dat mime
 convertContent (Types.ResourcePart uri _ mText) = TextContent $ mText ^. non uri
 
 fetchResources :: MCPConnection -> IO (Either MCPError [ Resource ])
@@ -87,7 +89,7 @@ tryReadFromServers (conn : rest) uri = do
   case result of
     Left _    -> tryReadFromServers rest uri
     Right rrr -> case rrr ^. Types.rrrContents of
-      []            -> tryReadFromServers rest uri
+      [] -> tryReadFromServers rest uri
       (content : _) -> pure $ Right content
 
 -- | Local version to avoid conflict with Relude.rights

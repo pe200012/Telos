@@ -72,6 +72,8 @@ import           Network.HTTP.Client.Conduit ( bodyReaderSource )
 import           Network.HTTP.Types.Header   ( RequestHeaders )
 import           Network.HTTP.Types.Status   ( statusCode )
 
+import           Relude
+
 import           Telos.Core.Types            ( AssistantMessage, Message, Tool )
 import           Telos.LLM.Copilot.Auth      ( CopilotAuth, CopilotToken(..), ensureValidToken )
 

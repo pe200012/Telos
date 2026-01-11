@@ -12,6 +12,8 @@ import qualified Data.Text.IO              as TIO
 
 import           Polysemy
 
+import           Relude
+
 import           Telos.Effect.StreamOutput
 
 -- | Run StreamOutput by writing to stdout.

@@ -36,6 +36,8 @@ import qualified Data.ByteString.Lazy as BL
 import           Lens.Micro           ( (^.) )
 import           Lens.Micro.TH        ( makeLenses )
 
+import           Relude
+
 data RequestId = IntId Int | TextId Text
   deriving stock ( Eq, Show, Generic )
 

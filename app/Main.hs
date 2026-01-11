@@ -13,6 +13,8 @@ import           Network.HTTP.Client.TLS  ( tlsManagerSettings )
 import           Polysemy                 ( runM )
 import           Polysemy.Error           ( runError )
 
+import           Relude
+
 import           Telos.Agent.Loop         ( AgentResult(..), runAgentLoop )
 import           Telos.CLI.Config         ( configFilePath, loadConfig )
 import           Telos.CLI.Repl           ( newReplState

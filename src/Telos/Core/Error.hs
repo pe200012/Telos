@@ -1,5 +1,7 @@
 module Telos.Core.Error ( LLMError(..), MCPError(..), ProcessError(..), AppError(..) ) where
 
+import           Relude
+
 data LLMError
   = LLMAuthError Text
   | LLMRateLimited Int

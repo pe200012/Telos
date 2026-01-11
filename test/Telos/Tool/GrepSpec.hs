@@ -1,18 +1,24 @@
 module Telos.Tool.GrepSpec ( spec ) where
 
+import           Control.Exception ( IOException, bracket_, catch )
+
+import qualified Data.Aeson        as Aeson
+import qualified Data.Text         as T
+
+import           Lens.Micro        ( (^.) )
+
+import           Relude
+
+import           System.Directory  ( createDirectoryIfMissing
+                                   , getTemporaryDirectory
+                                   , removeDirectoryRecursive
+                                   )
+import           System.FilePath   ( (</>) )
+
+import           Telos.Tool.Grep   ( grepTool )
+import           Telos.Tool.Types  ( BuiltinTool(..), newToolContext, trOutput, trSuccess )
+
 import           Test.Hspec
-
-import           Control.Exception    ( IOException, bracket_, catch )
-import qualified Data.Aeson           as Aeson
-import qualified Data.Text            as T
-import           Lens.Micro           ( (^.) )
-import           System.Directory     ( createDirectoryIfMissing, removeDirectoryRecursive
-                                      , getTemporaryDirectory
-                                      )
-import           System.FilePath      ( (</>) )
-
-import           Telos.Tool.Grep      ( grepTool )
-import           Telos.Tool.Types     ( BuiltinTool(..), newToolContext, trSuccess, trOutput )
 
 spec :: Spec
 spec = describe "GrepTool" $ do
@@ -21,10 +27,8 @@ spec = describe "GrepTool" $ do
       withTempDir $ \dir -> do
         writeFile (dir </> "test.txt") "hello world\nfoo bar\nhello again"
         ctx <- newToolContext
-        let args = Aeson.object
-              [ "pattern" Aeson..= ("hello" :: Text)
-              , "path" Aeson..= toText dir
-              ]
+        let args
+              = Aeson.object [ "pattern" Aeson..= ("hello" :: Text), "path" Aeson..= toText dir ]
         result <- (_btExecutor grepTool) ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "hello world"
@@ -34,10 +38,9 @@ spec = describe "GrepTool" $ do
       withTempDir $ \dir -> do
         writeFile (dir </> "test.txt") "foo123bar\nfoo456bar\nbaz789qux"
         ctx <- newToolContext
-        let args = Aeson.object
-              [ "pattern" Aeson..= ("foo[0-9]+bar" :: Text)
-              , "path" Aeson..= toText dir
-              ]
+        let args
+              = Aeson.object
+                [ "pattern" Aeson..= ("foo[0-9]+bar" :: Text), "path" Aeson..= toText dir ]
         result <- (_btExecutor grepTool) ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "foo123bar"
@@ -50,11 +53,12 @@ spec = describe "GrepTool" $ do
         writeFile (dir </> "code.hs") "hello haskell"
         writeFile (dir </> "code.py") "hello python"
         ctx <- newToolContext
-        let args = Aeson.object
-              [ "pattern" Aeson..= ("hello" :: Text)
-              , "path" Aeson..= toText dir
-              , "include" Aeson..= ("*.hs" :: Text)
-              ]
+        let args
+              = Aeson.object
+                [ "pattern" Aeson..= ("hello" :: Text)
+                , "path" Aeson..= toText dir
+                , "include" Aeson..= ("*.hs" :: Text)
+                ]
         result <- (_btExecutor grepTool) ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "haskell"
@@ -65,10 +69,8 @@ spec = describe "GrepTool" $ do
       withTempDir $ \dir -> do
         writeFile (dir </> "test.txt") "hello world"
         ctx <- newToolContext
-        let args = Aeson.object
-              [ "pattern" Aeson..= ("xyz123" :: Text)
-              , "path" Aeson..= toText dir
-              ]
+        let args
+              = Aeson.object [ "pattern" Aeson..= ("xyz123" :: Text), "path" Aeson..= toText dir ]
         result <- (_btExecutor grepTool) ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "No matches"
@@ -80,10 +82,8 @@ spec = describe "GrepTool" $ do
         writeFile (dir </> "root.txt") "findme root"
         writeFile (dir </> "sub" </> "nested.txt") "findme nested"
         ctx <- newToolContext
-        let args = Aeson.object
-              [ "pattern" Aeson..= ("findme" :: Text)
-              , "path" Aeson..= toText dir
-              ]
+        let args
+              = Aeson.object [ "pattern" Aeson..= ("findme" :: Text), "path" Aeson..= toText dir ]
         result <- (_btExecutor grepTool) ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "root"
@@ -94,10 +94,8 @@ spec = describe "GrepTool" $ do
       withTempDir $ \dir -> do
         writeFile (dir </> "test.txt") "line1\nmatch here\nline3"
         ctx <- newToolContext
-        let args = Aeson.object
-              [ "pattern" Aeson..= ("match" :: Text)
-              , "path" Aeson..= toText dir
-              ]
+        let args
+              = Aeson.object [ "pattern" Aeson..= ("match" :: Text), "path" Aeson..= toText dir ]
         result <- (_btExecutor grepTool) ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf ":2:"
@@ -105,7 +103,7 @@ spec = describe "GrepTool" $ do
   describe "argument validation" $ do
     it "fails with missing pattern" $ do
       ctx <- newToolContext
-      let args = Aeson.object ["path" Aeson..= ("/tmp" :: Text)]
+      let args = Aeson.object [ "path" Aeson..= ("/tmp" :: Text) ]
       result <- (_btExecutor grepTool) ctx args
       result ^. trSuccess `shouldBe` False
 
@@ -113,10 +111,7 @@ withTempDir :: (FilePath -> IO a) -> IO a
 withTempDir action = do
   tmpBase <- getTemporaryDirectory
   let dir = tmpBase </> "telos-test-grep"
-  bracket_
-    (createDirectoryIfMissing True dir)
-    (safeRemoveDir dir)
-    (action dir)
+  bracket_ (createDirectoryIfMissing True dir) (safeRemoveDir dir) (action dir)
 
 safeRemoveDir :: FilePath -> IO ()
 safeRemoveDir path = removeDirectoryRecursive path `catch` ignoreErr

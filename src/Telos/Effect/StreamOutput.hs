@@ -16,6 +16,8 @@ module Telos.Effect.StreamOutput
 
 import           Polysemy
 
+import           Relude
+
 -- | Effect for streaming output during LLM response generation.
 data StreamOutput m a where
   -- | Output a text chunk (content delta from LLM)

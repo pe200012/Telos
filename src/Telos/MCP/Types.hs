@@ -98,6 +98,8 @@ import           Data.Aeson.Types ( Parser )
 import           Lens.Micro       ( (^.) )
 import           Lens.Micro.TH    ( makeLenses )
 
+import           Relude
+
 type ProtocolVersion = Text
 
 currentProtocolVersion :: ProtocolVersion

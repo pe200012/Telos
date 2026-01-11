@@ -10,6 +10,8 @@ module Telos.Effect.Logger
 
 import           Polysemy ( Member, Sem, makeSem )
 
+import           Relude
+
 data LogLevel = Debug | Info | Warn | Error
   deriving stock ( Eq, Ord, Show )
 

@@ -79,6 +79,8 @@ import           Lens.Micro     ( (^.), non )
 import           Lens.Micro.Pro ( Prism', prism' )
 import           Lens.Micro.TH  ( makeLenses )
 
+import           Relude
+
 data Role = User | Assistant | System | ToolRole
   deriving stock ( Eq, Show, Generic )
 
@@ -240,10 +242,9 @@ instance FromJSON Message where
   parseJSON = withObject "Message" $ \o -> do
     role <- o .: "role"
     case role of
-      User -> UserMessage <$> o .: "content"
-      System -> SystemMessage <$> o .: "content"
-      ToolRole -> ToolResultMessage
-        <$> o .: "tool_call_id"
+      User      -> UserMessage <$> o .: "content"
+      System    -> SystemMessage <$> o .: "content"
+      ToolRole  -> ToolResultMessage <$> o .: "tool_call_id"
         <*> o .: "name"
         <*> o .: "content"
         <*> o .:? "is_error" .!= False

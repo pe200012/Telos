@@ -45,6 +45,8 @@ import           Lens.Micro.TH             ( makeLenses )
 import           Network.HTTP.Client
 import           Network.HTTP.Types.Status ( statusCode )
 
+import           Relude
+
 import           System.Directory          ( XdgDirectory(..)
                                            , createDirectoryIfMissing
                                            , doesFileExist

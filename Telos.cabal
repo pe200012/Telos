@@ -96,13 +96,14 @@ library
       TypeApplications
       TypeFamilies
       TypeOperators
+      NoImplicitPrelude
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       Diff
     , Glob
     , aeson >=2.0
     , async >=2.2
-    , base
+    , base >=4.7 && <5
     , bytestring
     , conduit >=1.3
     , conduit-extra
@@ -134,10 +135,6 @@ library
     , unordered-containers
     , uuid
     , vector
-  mixins:
-      base hiding (Prelude)
-    , relude (Relude as Prelude)
-    , relude 
   default-language: Haskell2010
 
 executable Telos-exe
@@ -173,6 +170,7 @@ executable Telos-exe
       TypeApplications
       TypeFamilies
       TypeOperators
+      NoImplicitPrelude
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       Diff
@@ -180,7 +178,7 @@ executable Telos-exe
     , Telos
     , aeson >=2.0
     , async >=2.2
-    , base
+    , base >=4.7 && <5
     , bytestring
     , conduit >=1.3
     , conduit-extra
@@ -212,10 +210,6 @@ executable Telos-exe
     , unordered-containers
     , uuid
     , vector
-  mixins:
-      base hiding (Prelude)
-    , relude (Relude as Prelude)
-    , relude 
   default-language: Haskell2010
 
 executable test-agent
@@ -251,6 +245,7 @@ executable test-agent
       TypeApplications
       TypeFamilies
       TypeOperators
+      NoImplicitPrelude
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -main-is TestAgent
   build-depends:
       Diff
@@ -258,7 +253,7 @@ executable test-agent
     , Telos
     , aeson >=2.0
     , async >=2.2
-    , base
+    , base >=4.7 && <5
     , bytestring
     , conduit >=1.3
     , conduit-extra
@@ -290,10 +285,6 @@ executable test-agent
     , unordered-containers
     , uuid
     , vector
-  mixins:
-      base hiding (Prelude)
-    , relude (Relude as Prelude)
-    , relude 
   default-language: Haskell2010
 
 executable test-copilot
@@ -329,6 +320,7 @@ executable test-copilot
       TypeApplications
       TypeFamilies
       TypeOperators
+      NoImplicitPrelude
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -main-is TestCopilot
   build-depends:
       Diff
@@ -336,7 +328,7 @@ executable test-copilot
     , Telos
     , aeson >=2.0
     , async >=2.2
-    , base
+    , base >=4.7 && <5
     , bytestring
     , conduit >=1.3
     , conduit-extra
@@ -368,10 +360,6 @@ executable test-copilot
     , unordered-containers
     , uuid
     , vector
-  mixins:
-      base hiding (Prelude)
-    , relude (Relude as Prelude)
-    , relude 
   default-language: Haskell2010
 
 test-suite Telos-test
@@ -424,6 +412,7 @@ test-suite Telos-test
       TypeApplications
       TypeFamilies
       TypeOperators
+      NoImplicitPrelude
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       Diff
@@ -432,7 +421,7 @@ test-suite Telos-test
     , Telos
     , aeson
     , async >=2.2
-    , base
+    , base >=4.7 && <5
     , bytestring
     , conduit >=1.3
     , conduit-extra
@@ -467,8 +456,4 @@ test-suite Telos-test
     , unordered-containers
     , uuid
     , vector
-  mixins:
-      base hiding (Prelude)
-    , relude (Relude as Prelude)
-    , relude 
   default-language: Haskell2010

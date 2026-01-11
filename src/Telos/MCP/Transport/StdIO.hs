@@ -24,6 +24,8 @@ import qualified Data.ByteString.Lazy.Char8 as BL8
 
 import           Lens.Micro.TH              ( makeLenses )
 
+import           Relude
+
 import           System.IO                  ( hClose, hGetLine )
 import           System.Process             ( CreateProcess(..)
                                             , ProcessHandle

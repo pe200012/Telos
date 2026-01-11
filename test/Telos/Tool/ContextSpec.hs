@@ -1,13 +1,20 @@
 module Telos.Tool.ContextSpec ( spec ) where
 
+import           Data.Time        ( getCurrentTime )
+
+import           Lens.Micro       ( (^.) )
+
+import           Relude
+
+import           Telos.Tool.Types ( friModTime
+                                  , friReadTime
+                                  , getFileReadTime
+                                  , markFileRead
+                                  , newToolContext
+                                  , wasFileRead
+                                  )
+
 import           Test.Hspec
-
-import           Data.Time            ( getCurrentTime )
-import           Lens.Micro           ( (^.) )
-
-import           Telos.Tool.Types     ( newToolContext, markFileRead, wasFileRead
-                                      , getFileReadTime, friReadTime, friModTime
-                                      )
 
 spec :: Spec
 spec = describe "ToolContext" $ do
@@ -31,7 +38,7 @@ spec = describe "ToolContext" $ do
       timeAfter <- getCurrentTime
       mInfo <- getFileReadTime ctx "/test/file.txt"
       case mInfo of
-        Nothing -> expectationFailure "Expected file read info"
+        Nothing   -> expectationFailure "Expected file read info"
         Just info -> do
           (info ^. friReadTime) `shouldSatisfy` (>= timeBefore)
           (info ^. friReadTime) `shouldSatisfy` (<= timeAfter)
@@ -42,7 +49,7 @@ spec = describe "ToolContext" $ do
       markFileRead ctx "/test/file.txt" (Just now)
       mInfo <- getFileReadTime ctx "/test/file.txt"
       case mInfo of
-        Nothing -> expectationFailure "Expected file read info"
+        Nothing   -> expectationFailure "Expected file read info"
         Just info -> info ^. friModTime `shouldBe` Just now
 
   describe "wasFileRead" $ do
@@ -63,11 +70,11 @@ spec = describe "ToolContext" $ do
       ctx <- newToolContext
       markFileRead ctx "/file1.txt" Nothing
       markFileRead ctx "/file2.txt" Nothing
-      
+
       wasRead1 <- wasFileRead ctx "/file1.txt"
       wasRead2 <- wasFileRead ctx "/file2.txt"
       wasRead3 <- wasFileRead ctx "/file3.txt"
-      
+
       wasRead1 `shouldBe` True
       wasRead2 `shouldBe` True
       wasRead3 `shouldBe` False

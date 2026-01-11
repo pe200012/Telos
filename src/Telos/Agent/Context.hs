@@ -23,18 +23,21 @@ module Telos.Agent.Context
 import           Lens.Micro         ( (^.) )
 import           Lens.Micro.TH      ( makeLenses )
 
+import           Relude
+
 import           Telos.Agent.Config ( AgentConfig )
 import           Telos.Core.Types   ( Message, Tool )
 import           Telos.Tool.Types   ( ToolContext, newToolContext )
 
 data AgentContext
-  = AgentContext { _ctxHistory     :: TVar [ Message ]
-                 , _ctxTools       :: TVar [ Tool ]
-                 , _ctxInterrupt   :: MVar ()
-                 , _ctxIteration   :: TVar Int
-                 , _ctxConfig      :: TVar AgentConfig
-                 , _ctxToolContext :: ToolContext
-                 }
+  = AgentContext
+  { _ctxHistory     :: TVar [ Message ]
+  , _ctxTools       :: TVar [ Tool ]
+  , _ctxInterrupt   :: MVar ()
+  , _ctxIteration   :: TVar Int
+  , _ctxConfig      :: TVar AgentConfig
+  , _ctxToolContext :: ToolContext
+  }
 
 makeLenses ''AgentContext
 

@@ -22,6 +22,8 @@ import           Network.HTTP.Client      ( Manager )
 
 import           Polysemy
 
+import           Relude
+
 import           Telos.Core.Error         ( LLMError(..) )
 import           Telos.Core.Types
 import           Telos.Effect.LLM

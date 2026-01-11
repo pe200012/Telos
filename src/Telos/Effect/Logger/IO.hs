@@ -9,6 +9,8 @@ import qualified Data.Text.IO        as TIO
 
 import           Polysemy            ( Embed, InterpreterFor, Member, embed, interpret )
 
+import           Relude
+
 import           Telos.Effect.Logger ( LogLevel(..), Logger(..) )
 
 runLoggerIO :: Member (Embed IO) r => InterpreterFor Logger r

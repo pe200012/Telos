@@ -2,6 +2,8 @@ module Telos.MCP.Transport.StdIOSpec ( spec ) where
 
 import           Data.Aeson                ( (.=), object )
 
+import           Relude
+
 import           Telos.MCP.Transport.StdIO
 
 import           Test.Hspec

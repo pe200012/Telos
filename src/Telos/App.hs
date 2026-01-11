@@ -18,6 +18,8 @@ import           Network.HTTP.Client.TLS      ( tlsManagerSettings )
 import           Polysemy                     ( runM )
 import           Polysemy.Error               ( runError )
 
+import           Relude
+
 import           Telos.Agent.Config           ( AgentConfig
                                               , acMCPServers
                                               , acStreamingEnabled
@@ -36,9 +38,7 @@ import           Telos.Agent.Loop             ( AgentResult(..)
                                               , runAgentLoop
                                               , runAgentLoopStreaming
                                               )
-import           Telos.CLI.Config              ( makeMcpServerEntry
-                                              , mseEnv
-                                              )
+import           Telos.CLI.Config             ( makeMcpServerEntry, mseEnv )
 import           Telos.Core.Error             ( AppError )
 import           Telos.Effect.Logger.IO       ( runLoggerIO )
 import           Telos.Effect.StreamOutput.IO ( runStreamOutputIO )
@@ -81,10 +81,14 @@ initializeTools ctx manager = do
   config <- readTVarIO (ctx ^. ctxConfig)
   let servers = config ^. acMCPServers
   forM_ servers $ \serverCfg -> do
-    let name = serverCfg ^. mscName
+    let name     = serverCfg ^. mscName
         envPairs = serverCfg ^. mscEnv
-        entry = makeMcpServerEntry name (serverCfg ^. mscCommand) (serverCfg ^. mscArgs)
-          & mseEnv .~ (if null envPairs then Nothing else Just envPairs)
+        entry
+          = makeMcpServerEntry name (serverCfg ^. mscCommand) (serverCfg ^. mscArgs)
+          & mseEnv
+          .~ (if null envPairs
+                then Nothing
+                else Just envPairs)
     TIO.putStrLn $ "Registering MCP server: " <> name
     registerServer manager entry
     TIO.putStrLn $ "Connecting to MCP server: " <> name

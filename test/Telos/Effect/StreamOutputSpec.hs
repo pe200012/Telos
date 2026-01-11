@@ -4,6 +4,9 @@ module Telos.Effect.StreamOutputSpec ( spec ) where
 
 import           Polysemy
 
+import           Relude
+import           Relude
+
 import           Telos.Effect.StreamOutput
 import           Telos.Effect.StreamOutput.IO ( runStreamOutputSilent )
 

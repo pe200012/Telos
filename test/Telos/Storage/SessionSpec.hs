@@ -1,20 +1,25 @@
 module Telos.Storage.SessionSpec ( spec ) where
 
-import           Test.Hspec
+import           Control.Exception     ( finally )
 
-import           Control.Exception      ( finally )
-import qualified Data.Text              as T
-import           Lens.Micro             ( (^.) )
-import           System.Directory       ( removeDirectoryRecursive
-                                        , doesDirectoryExist
-                                        , getTemporaryDirectory
-                                        )
-import           System.Environment     ( setEnv, unsetEnv )
-import           System.FilePath        ( (</>) )
+import qualified Data.Text             as T
 
-import           Telos.Core.Types       ( Message(..) )
+import           Lens.Micro            ( (^.) )
+
+import           Relude
+
+import           System.Directory      ( doesDirectoryExist
+                                       , getTemporaryDirectory
+                                       , removeDirectoryRecursive
+                                       )
+import           System.Environment    ( setEnv, unsetEnv )
+import           System.FilePath       ( (</>) )
+
+import           Telos.Core.Types      ( Message(..) )
 import           Telos.Storage.Session
 import           Telos.Storage.Types
+
+import           Test.Hspec
 
 spec :: Spec
 spec = around_ withTempDataDir $ do
@@ -46,7 +51,7 @@ spec = around_ withTempDataDir $ do
       _ <- createSession (Just "Third")
       sessions <- listSessions
       length sessions `shouldBe` 3
-      map (^. siTitle) sessions `shouldBe` ["Third", "Second", "First"]
+      map (^. siTitle) sessions `shouldBe` [ "Third", "Second", "First" ]
 
     it "deletes session and its messages" $ do
       info <- createSession (Just "To Delete")
@@ -81,9 +86,9 @@ spec = around_ withTempDataDir $ do
 
     it "saveContextMessages only appends new messages" $ do
       info <- createSession (Just "Incremental Save")
-      let sid = info ^. siId
-          history1 = [UserMessage "First"]
-          history2 = [UserMessage "First", UserMessage "Second", UserMessage "Third"]
+      let sid      = info ^. siId
+          history1 = [ UserMessage "First" ]
+          history2 = [ UserMessage "First", UserMessage "Second", UserMessage "Third" ]
       saveContextMessages sid history1
       count1 <- getMessageCount sid
       count1 `shouldBe` 1
@@ -103,7 +108,7 @@ spec = around_ withTempDataDir $ do
   describe "touchSession" $ do
     it "updates the session timestamp" $ do
       info <- createSession (Just "Touch Test")
-      let sid = info ^. siId
+      let sid          = info ^. siId
           originalTime = info ^. siUpdatedAt
       touchSession sid
       mUpdated <- getSession sid

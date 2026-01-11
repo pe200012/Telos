@@ -13,12 +13,13 @@ import           Network.HTTP.Client.TLS  ( tlsManagerSettings )
 import           Polysemy                 ( runM )
 import           Polysemy.Error           ( runError )
 
+import           Relude
+
 import           Telos.Agent.Config       ( acMaxIterations
                                           , acModel
                                           , acPromptConfig
                                           , defaultAgentConfig
                                           )
-import           Telos.Prompt.Types       ( simpleSystemPromptConfig )
 import           Telos.Agent.Context      ( newAgentContext, registerTools )
 import           Telos.Agent.Loop         ( AgentResult(..), runAgentLoop )
 import           Telos.CLI.Config         ( makeMcpServerEntry )
@@ -35,6 +36,7 @@ import           Telos.MCP.ServerManager  ( aggregateTools
                                           , registerServer
                                           , shutdownAll
                                           )
+import           Telos.Prompt.Types       ( simpleSystemPromptConfig )
 
 main :: IO ()
 main = do
@@ -48,10 +50,11 @@ main = do
 
   serverMgr <- newServerManager
 
-  let fsEntry = makeMcpServerEntry
-        "filesystem"
-        "npx"
-        [ "-y", "@modelcontextprotocol/server-filesystem", "/tmp" ]
+  let fsEntry
+        = makeMcpServerEntry
+          "filesystem"
+          "npx"
+          [ "-y", "@modelcontextprotocol/server-filesystem", "/tmp" ]
 
   putStrLn "Registering filesystem MCP server..."
   registerServer serverMgr fsEntry
@@ -69,15 +72,14 @@ main = do
     Right toolsWithSource -> do
       let tools = map fst toolsWithSource
       putStrLn $ "Available tools: " ++ show (length tools)
-      mapM_
-        (\( tool, serverName ) -> TIO.putStrLn
-         $ "  - " <> serverName <> "/" <> (tool ^. toolName))
-        toolsWithSource
+      mapM_ (\( tool, serverName ) -> TIO.putStrLn
+             $ "  - " <> serverName <> "/" <> (tool ^. toolName)) toolsWithSource
 
       let agentCfg
             = defaultAgentConfig
             & acPromptConfig
-            ?~ simpleSystemPromptConfig "You are a helpful assistant with access to filesystem tools. Be concise."
+            ?~ simpleSystemPromptConfig
+              "You are a helpful assistant with access to filesystem tools. Be concise."
             & acModel .~ "gpt-4o"
             & acMaxIterations .~ 5
 

@@ -4,6 +4,8 @@ import           Data.Aeson              ( (.=), object )
 
 import           Lens.Micro              ( (^.) )
 
+import           Relude
+
 import           Telos.MCP.Client
 import           Telos.MCP.ServerManager
 import           Telos.MCP.Types

@@ -26,6 +26,8 @@ import qualified Data.ByteString.Lazy as LBS
 import           Lens.Micro           ( (^.) )
 import           Lens.Micro.TH        ( makeLenses )
 
+import           Relude
+
 import           System.Directory     ( XdgDirectory(XdgConfig), doesFileExist, getXdgDirectory )
 import           System.FilePath      ( (</>) )
 

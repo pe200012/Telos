@@ -17,32 +17,27 @@ module Telos.Tool.Types
   , getFileReadTime
   ) where
 
-import qualified Data.Map.Strict as Map
-import           Data.Aeson      ( Value )
-import           Data.Time       ( UTCTime, getCurrentTime )
-import           Lens.Micro.TH   ( makeLenses )
+import           Data.Aeson       ( Value )
+import qualified Data.Map.Strict  as Map
+import           Data.Time        ( UTCTime, getCurrentTime )
+
+import           Lens.Micro.TH    ( makeLenses )
+
+import           Relude
 
 import           Telos.Core.Types ( Tool )
 
-data ToolResult = ToolResult
-  { _trSuccess :: Bool
-  , _trOutput  :: Text
-  }
+data ToolResult = ToolResult { _trSuccess :: Bool, _trOutput :: Text }
   deriving stock ( Eq, Show )
 
 makeLenses ''ToolResult
 
-data FileReadInfo = FileReadInfo
-  { _friReadTime :: UTCTime
-  , _friModTime  :: Maybe UTCTime
-  }
+data FileReadInfo = FileReadInfo { _friReadTime :: UTCTime, _friModTime :: Maybe UTCTime }
   deriving stock ( Eq, Show )
 
 makeLenses ''FileReadInfo
 
-newtype ToolContext = ToolContext
-  { _tcReadFiles :: TVar (Map.Map FilePath FileReadInfo)
-  }
+newtype ToolContext = ToolContext { _tcReadFiles :: TVar (Map.Map FilePath FileReadInfo) }
 
 makeLenses ''ToolContext
 
@@ -63,9 +58,6 @@ getFileReadTime ctx path = Map.lookup path <$> readTVarIO (_tcReadFiles ctx)
 
 type ToolExecutor = ToolContext -> Value -> IO ToolResult
 
-data BuiltinTool = BuiltinTool
-  { _btTool     :: Tool
-  , _btExecutor :: ToolExecutor
-  }
+data BuiltinTool = BuiltinTool { _btTool :: Tool, _btExecutor :: ToolExecutor }
 
 makeLenses ''BuiltinTool

@@ -4,6 +4,8 @@ import           Conduit          ( ConduitT )
 
 import           Polysemy         ( makeSem )
 
+import           Relude
+
 import           Telos.Core.Error ( LLMError )
 import           Telos.Core.Types ( AssistantMessage
                                   , Message

@@ -7,11 +7,13 @@ module Telos.Storage.Path
   , ensureSessionDir
   ) where
 
-import           System.Directory  ( XdgDirectory(..)
-                                   , createDirectoryIfMissing
-                                   , getXdgDirectory
-                                   )
-import           System.FilePath   ( (</>) )
+import           Relude
+
+import           System.Directory    ( XdgDirectory(..)
+                                     , createDirectoryIfMissing
+                                     , getXdgDirectory
+                                     )
+import           System.FilePath     ( (</>) )
 
 import           Telos.Storage.Types ( SessionId(..) )
 

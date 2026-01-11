@@ -24,6 +24,8 @@ import qualified Data.Map.Strict        as Map
 import           Lens.Micro             ( (.~), (^.) )
 import           Lens.Micro.TH          ( makeLenses )
 
+import           Relude
+
 import           Telos.CLI.Config       ( McpServerEntry
                                         , mseArgs
                                         , mseCommand
@@ -50,8 +52,7 @@ data ServerState
   | StateFailed McpServerEntry Text
 
 -- | Server manager - stores configs, connects on demand
-newtype ServerManager
-  = ServerManager { _smServers :: TVar (Map Text ServerState) }
+newtype ServerManager = ServerManager { _smServers :: TVar (Map Text ServerState) }
 
 makeLenses ''ServerManager
 
@@ -157,7 +158,7 @@ aggregateTools mgr = do
                                                tool
                                                  = makeTool (ti ^. tiName) (ti ^. tiInputSchema)
                                                  & toolDescription .~ (ti ^. tiDescription)
-                                             in
+                                             in 
                                                ( tool, name )) (ltr ^. ltrTools)
 
   pure $ concat <$> sequence results

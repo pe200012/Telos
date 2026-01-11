@@ -6,6 +6,8 @@ import           Data.Aeson              ( object )
 
 import           Lens.Micro              ( (^.) )
 
+import           Relude
+
 import           Telos.Agent.Config      ( defaultAgentConfig )
 import           Telos.Agent.Context
 import           Telos.Core.Types        ( Message(..), makeTool )

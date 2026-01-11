@@ -1,5 +1,7 @@
 module Telos.MCP.ClientSpec ( spec ) where
 
+import           Relude
+
 import           Telos.MCP.Client
 import           Telos.MCP.Types
 

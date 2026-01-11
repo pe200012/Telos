@@ -28,6 +28,8 @@ import           Lens.Micro               ( (^.), non )
 import           Lens.Micro.Pro           ( (?~), at )
 import           Lens.Micro.TH            ( makeLenses )
 
+import           Relude
+
 import           Telos.Core.Types
 import           Telos.LLM.Copilot.Client ( ChatResponse(..)
                                           , Delta(..)
