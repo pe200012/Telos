@@ -335,7 +335,7 @@ autoSave replState = do
 -- | Handle agent result
 handleAgentResult :: AgentResult -> IO ()
 handleAgentResult = \case
-  AgentResponse _ -> pure ()  -- Response already streamed/printed
+  AgentResponse content -> TIO.putStrLn content  -- Print full response
   AgentInterrupted partial -> do
     TIO.putStrLn ""
     TIO.putStrLn $ "[Interrupted] " <> T.take 100 partial

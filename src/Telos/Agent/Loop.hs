@@ -258,7 +258,7 @@ executeToolCalls ctx toolCalls = do
       Just builtinResult -> do
         let content = builtinResult ^. ToolTypes.trOutput
             isError = not (builtinResult ^. ToolTypes.trSuccess)
-        logDebug $ "Builtin tool result: " <> T.take 200 content
+        logDebug $ "Builtin tool result: " <> content
         pure $ Core.ToolResultMessage toolId tName content isError
 
       Nothing -> do
@@ -273,7 +273,7 @@ executeToolCalls ctx toolCalls = do
           Right toolResult -> do
             let content = formatToolResult toolResult
                 isError = toolResult ^. trIsError
-            logDebug $ "Tool result: " <> T.take 200 content
+            logDebug $ "Tool result: " <> content
             pure $ Core.ToolResultMessage toolId tName content isError
 
 formatToolResult :: ToolResult -> Text
