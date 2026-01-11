@@ -32,7 +32,6 @@ library
       Telos.Agent.Streaming
       Telos.App
       Telos.CLI.Config
-      Telos.CLI.LazyServerManager
       Telos.CLI.Repl
       Telos.Core.Error
       Telos.Core.Types
@@ -54,6 +53,17 @@ library
       Telos.MCP.ServerManager
       Telos.MCP.Transport.StdIO
       Telos.MCP.Types
+      Telos.Storage.Path
+      Telos.Storage.Session
+      Telos.Storage.Types
+      Telos.Tool.Bash
+      Telos.Tool.Edit
+      Telos.Tool.Glob
+      Telos.Tool.Grep
+      Telos.Tool.Read
+      Telos.Tool.Registry
+      Telos.Tool.Types
+      Telos.Tool.Write
   other-modules:
       Paths_Telos
   autogen-modules:
@@ -85,7 +95,9 @@ library
       TypeOperators
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
-      aeson >=2.0
+      Diff
+    , Glob
+    , aeson >=2.0
     , async >=2.2
     , base
     , bytestring
@@ -105,15 +117,19 @@ library
     , mtl
     , polysemy >=1.9
     , process >=1.6
+    , random
+    , regex-tdfa
     , relude
     , safe
     , stm >=2.5
     , text
     , time
     , transformers
+    , typed-process
     , unix
     , unliftio
     , unordered-containers
+    , uuid
     , vector
   mixins:
       base hiding (Prelude)
@@ -156,7 +172,9 @@ executable Telos-exe
       TypeOperators
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      Telos
+      Diff
+    , Glob
+    , Telos
     , aeson >=2.0
     , async >=2.2
     , base
@@ -177,15 +195,19 @@ executable Telos-exe
     , mtl
     , polysemy >=1.9
     , process >=1.6
+    , random
+    , regex-tdfa
     , relude
     , safe
     , stm >=2.5
     , text
     , time
     , transformers
+    , typed-process
     , unix
     , unliftio
     , unordered-containers
+    , uuid
     , vector
   mixins:
       base hiding (Prelude)
@@ -228,7 +250,9 @@ executable test-agent
       TypeOperators
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -main-is TestAgent
   build-depends:
-      Telos
+      Diff
+    , Glob
+    , Telos
     , aeson >=2.0
     , async >=2.2
     , base
@@ -249,15 +273,19 @@ executable test-agent
     , mtl
     , polysemy >=1.9
     , process >=1.6
+    , random
+    , regex-tdfa
     , relude
     , safe
     , stm >=2.5
     , text
     , time
     , transformers
+    , typed-process
     , unix
     , unliftio
     , unordered-containers
+    , uuid
     , vector
   mixins:
       base hiding (Prelude)
@@ -300,7 +328,9 @@ executable test-copilot
       TypeOperators
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -main-is TestCopilot
   build-depends:
-      Telos
+      Diff
+    , Glob
+    , Telos
     , aeson >=2.0
     , async >=2.2
     , base
@@ -321,15 +351,19 @@ executable test-copilot
     , mtl
     , polysemy >=1.9
     , process >=1.6
+    , random
+    , regex-tdfa
     , relude
     , safe
     , stm >=2.5
     , text
     , time
     , transformers
+    , typed-process
     , unix
     , unliftio
     , unordered-containers
+    , uuid
     , vector
   mixins:
       base hiding (Prelude)
@@ -351,6 +385,14 @@ test-suite Telos-test
       Telos.MCP.IntegrationSpec
       Telos.MCP.ServerManagerSpec
       Telos.MCP.Transport.StdIOSpec
+      Telos.Storage.SessionSpec
+      Telos.Tool.BashSpec
+      Telos.Tool.ContextSpec
+      Telos.Tool.EditSpec
+      Telos.Tool.GlobSpec
+      Telos.Tool.GrepSpec
+      Telos.Tool.ReadSpec
+      Telos.Tool.WriteSpec
       Paths_Telos
   autogen-modules:
       Paths_Telos
@@ -381,7 +423,9 @@ test-suite Telos-test
       TypeOperators
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      QuickCheck
+      Diff
+    , Glob
+    , QuickCheck
     , Telos
     , aeson
     , async >=2.2
@@ -406,15 +450,19 @@ test-suite Telos-test
     , polysemy >=1.9
     , process >=1.6
     , quickcheck-instances
+    , random
+    , regex-tdfa
     , relude
     , safe
     , stm >=2.5
     , text
     , time
     , transformers
+    , typed-process
     , unix
     , unliftio
     , unordered-containers
+    , uuid
     , vector
   mixins:
       base hiding (Prelude)

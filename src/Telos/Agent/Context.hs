@@ -7,6 +7,7 @@ module Telos.Agent.Context
   , ctxInterrupt
   , ctxIteration
   , ctxConfig
+  , ctxToolContext
   , newAgentContext
   , addMessage
   , getHistory
@@ -24,13 +25,15 @@ import           Lens.Micro.TH      ( makeLenses )
 
 import           Telos.Agent.Config ( AgentConfig )
 import           Telos.Core.Types   ( Message, Tool )
+import           Telos.Tool.Types   ( ToolContext, newToolContext )
 
 data AgentContext
-  = AgentContext { _ctxHistory   :: TVar [ Message ]
-                 , _ctxTools     :: TVar [ Tool ]
-                 , _ctxInterrupt :: MVar ()
-                 , _ctxIteration :: TVar Int
-                 , _ctxConfig    :: AgentConfig
+  = AgentContext { _ctxHistory     :: TVar [ Message ]
+                 , _ctxTools       :: TVar [ Tool ]
+                 , _ctxInterrupt   :: MVar ()
+                 , _ctxIteration   :: TVar Int
+                 , _ctxConfig      :: AgentConfig
+                 , _ctxToolContext :: ToolContext
                  }
 
 makeLenses ''AgentContext
@@ -41,12 +44,14 @@ newAgentContext cfg = do
   tools <- newTVarIO []
   interrupt <- newEmptyMVar
   iteration <- newTVarIO 0
+  toolCtx <- newToolContext
   pure
-    AgentContext { _ctxHistory   = history
-                 , _ctxTools     = tools
-                 , _ctxInterrupt = interrupt
-                 , _ctxIteration = iteration
-                 , _ctxConfig    = cfg
+    AgentContext { _ctxHistory     = history
+                 , _ctxTools       = tools
+                 , _ctxInterrupt   = interrupt
+                 , _ctxIteration   = iteration
+                 , _ctxConfig      = cfg
+                 , _ctxToolContext = toolCtx
                  }
 
 addMessage :: AgentContext -> Message -> IO ()

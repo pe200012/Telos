@@ -61,7 +61,8 @@ module Telos.Core.Types
   , trmIsError
   ) where
 
-import           Data.Aeson     ( (.:)
+import           Data.Aeson     ( (.!=)
+                                , (.:)
                                 , (.:?)
                                 , (.=)
                                 , FromJSON(..)
@@ -234,6 +235,22 @@ instance ToJSON Message where
       , "content" .= result
       , "is_error" .= isErr
       ]
+
+instance FromJSON Message where
+  parseJSON = withObject "Message" $ \o -> do
+    role <- o .: "role"
+    case role of
+      User -> UserMessage <$> o .: "content"
+      System -> SystemMessage <$> o .: "content"
+      ToolRole -> ToolResultMessage
+        <$> o .: "tool_call_id"
+        <*> o .: "name"
+        <*> o .: "content"
+        <*> o .:? "is_error" .!= False
+      Assistant -> do
+        content <- o .:? "content"
+        toolCalls <- o .:? "tool_calls" .!= []
+        pure $ AssistantMsg $ AssistantMessage content toolCalls
 
 data StreamEvent
   = ContentDelta Text

@@ -26,6 +26,7 @@ import           Telos.Agent.Context       ( AgentContext
                                            , addMessage
                                            , ctxConfig
                                            , ctxInterrupt
+                                           , ctxToolContext
                                            , getHistory
                                            , getIterationCount
                                            , getTools
@@ -47,6 +48,8 @@ import           Telos.Effect.MCP          ( ContentItem(..)
                                            )
 import           Telos.Effect.StreamOutput ( StreamOutput, flushOutput, outputNewline )
 import qualified Telos.MCP.Types           as MCP
+import           Telos.Tool.Registry       ( executeBuiltinTool )
+import qualified Telos.Tool.Types          as ToolTypes
 
 data AgentResult
   = AgentResponse Text
@@ -239,26 +242,39 @@ executeToolCalls :: Members '[ MCP, Logger, Embed IO ] r
                  => AgentContext
                  -> [ Core.ToolCall ]
                  -> Sem r [ Core.Message ]
-executeToolCalls _ctx toolCalls = do
+executeToolCalls ctx toolCalls = do
   forM toolCalls $ \tc -> do
     let tName    = tc ^. Core.tcName
         toolArgs = tc ^. Core.tcArguments
         toolId   = tc ^. Core.tcId
+        toolCtx  = ctx ^. ctxToolContext
 
     logDebug $ "Executing tool: " <> tName
 
-    result <- callTool tName toolArgs
+    -- Try builtin tool first
+    mBuiltinResult <- embed $ executeBuiltinTool toolCtx tName toolArgs
 
-    case result of
-      Left err         -> do
-        logWarn $ "Tool error: " <> T.pack (show err)
-        pure $ Core.ToolResultMessage toolId tName (T.pack $ show err) True
-
-      Right toolResult -> do
-        let content = formatToolResult toolResult
-            isError = toolResult ^. trIsError
-        logDebug $ "Tool result: " <> T.take 200 content
+    case mBuiltinResult of
+      Just builtinResult -> do
+        let content = builtinResult ^. ToolTypes.trOutput
+            isError = not (builtinResult ^. ToolTypes.trSuccess)
+        logDebug $ "Builtin tool result: " <> T.take 200 content
         pure $ Core.ToolResultMessage toolId tName content isError
+
+      Nothing -> do
+        -- Fallback to MCP tool
+        result <- callTool tName toolArgs
+
+        case result of
+          Left err         -> do
+            logWarn $ "Tool error: " <> T.pack (show err)
+            pure $ Core.ToolResultMessage toolId tName (T.pack $ show err) True
+
+          Right toolResult -> do
+            let content = formatToolResult toolResult
+                isError = toolResult ^. trIsError
+            logDebug $ "Tool result: " <> T.take 200 content
+            pure $ Core.ToolResultMessage toolId tName content isError
 
 formatToolResult :: ToolResult -> Text
 formatToolResult result = T.intercalate "\n" $ map formatContentItem (result ^. trContent)

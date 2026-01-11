@@ -53,6 +53,13 @@ dependencies:
   # File system
   - filepath
   - directory
+  - Glob
+  # Regex
+  - regex-tdfa
+  # Typed process
+  - typed-process
+  # Diff
+  - Diff
   # Transformers
   - mtl
   - transformers
@@ -63,6 +70,9 @@ dependencies:
   - microlens
   - microlens-th
   - microlens-pro
+  # UUID generation
+  - uuid
+  - random
 
 default-extensions:
   - BangPatterns

@@ -36,6 +36,9 @@ import           Telos.Agent.Loop             ( AgentResult(..)
                                               , runAgentLoop
                                               , runAgentLoopStreaming
                                               )
+import           Telos.CLI.Config              ( makeMcpServerEntry
+                                              , mseEnv
+                                              )
 import           Telos.Core.Error             ( AppError )
 import           Telos.Effect.Logger.IO       ( runLoggerIO )
 import           Telos.Effect.StreamOutput.IO ( runStreamOutputIO )
@@ -47,13 +50,12 @@ import           Telos.LLM.Copilot.Client     ( CopilotClient
 import           Telos.LLM.Interpreter        ( runLLMWithCopilot )
 import           Telos.MCP.Interpreter        ( runMCPWithManager )
 import           Telos.MCP.ServerManager      ( ServerManager
-                                              , addServer
                                               , aggregateTools
+                                              , getOrConnectServer
                                               , newServerManager
+                                              , registerServer
                                               , shutdownAll
-                                              , twsTool
                                               )
-import           Telos.MCP.Types              ( makeServerConfig, scEnv )
 
 data AppConfig = AppConfig { appAgentConfig :: AgentConfig, appCopilotConfig :: CopilotConfig }
 
@@ -78,22 +80,17 @@ initializeTools :: AgentContext -> ServerManager -> IO ()
 initializeTools ctx manager = do
   let servers = ctx ^. ctxConfig . acMCPServers
   forM_ servers $ \serverCfg -> do
-    let name      = serverCfg ^. mscName
-        cmd       = serverCfg ^. mscCommand
-        args      = serverCfg ^. mscArgs
-        env       = serverCfg ^. mscEnv
-        srvConfig
-          = makeServerConfig name cmd args
-          & scEnv
-          .~ (if null env
-                then Nothing
-                else Just env)
+    let name = serverCfg ^. mscName
+        envPairs = serverCfg ^. mscEnv
+        entry = makeMcpServerEntry name (serverCfg ^. mscCommand) (serverCfg ^. mscArgs)
+          & mseEnv .~ (if null envPairs then Nothing else Just envPairs)
+    TIO.putStrLn $ "Registering MCP server: " <> name
+    registerServer manager entry
     TIO.putStrLn $ "Connecting to MCP server: " <> name
-    result <- addServer manager srvConfig
+    result <- getOrConnectServer manager name
     case result of
       Left err -> TIO.putStrLn $ "  Failed: " <> T.pack (show err)
       Right _  -> TIO.putStrLn "  Connected"
-
   refreshTools ctx manager
 
 refreshTools :: AgentContext -> ServerManager -> IO ()
@@ -102,7 +99,7 @@ refreshTools ctx manager = do
   case result of
     Left err -> TIO.putStrLn $ "Failed to list tools: " <> T.pack (show err)
     Right toolsWithSource -> do
-      let tools = map (^. twsTool) toolsWithSource
+      let tools = map fst toolsWithSource
       registerTools ctx tools
       TIO.putStrLn $ "Registered " <> T.pack (show $ length tools) <> " tools"
 

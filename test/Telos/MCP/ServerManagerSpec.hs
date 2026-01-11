@@ -10,28 +10,27 @@ spec = do
     describe "newServerManager" $ do
       it "creates an empty manager" $ do
         mgr <- newServerManager
-        conns <- getAllConnections mgr
-        length conns `shouldBe` 0
+        statuses <- getServerStatus mgr
+        length statuses `shouldBe` 0
 
-    describe "getConnection" $ do
-      it "returns Nothing for non-existent server" $ do
+    describe "getOrConnectServer" $ do
+      it "returns error for non-registered server" $ do
         mgr <- newServerManager
-        result <- getConnection mgr "nonexistent"
-        isNothing result `shouldBe` True
+        result <- getOrConnectServer mgr "nonexistent"
+        isLeft result `shouldBe` True
 
-    describe "removeServer" $ do
-      it "does nothing for non-existent server" $ do
+    describe "getServerStatus" $ do
+      it "returns empty list for empty manager" $ do
         mgr <- newServerManager
-        removeServer mgr "nonexistent"
-        conns <- getAllConnections mgr
-        length conns `shouldBe` 0
+        statuses <- getServerStatus mgr
+        length statuses `shouldBe` 0
 
     describe "shutdownAll" $ do
       it "works on empty manager" $ do
         mgr <- newServerManager
         shutdownAll mgr
-        conns <- getAllConnections mgr
-        length conns `shouldBe` 0
+        statuses <- getServerStatus mgr
+        length statuses `shouldBe` 0
 
     describe "aggregateTools" $ do
       it "returns empty list for empty manager" $ do

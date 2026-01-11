@@ -20,6 +20,7 @@ import           Telos.Agent.Config       ( acMaxIterations
                                           )
 import           Telos.Agent.Context      ( newAgentContext, registerTools )
 import           Telos.Agent.Loop         ( AgentResult(..), runAgentLoop )
+import           Telos.CLI.Config         ( makeMcpServerEntry )
 import           Telos.Core.Error         ( AppError )
 import           Telos.Core.Types         ( toolName )
 import           Telos.Effect.Logger.IO   ( runLoggerIO )
@@ -27,14 +28,12 @@ import           Telos.LLM.Copilot.Auth   ( newCopilotAuth )
 import           Telos.LLM.Copilot.Client ( CopilotConfig(..), newCopilotClient )
 import           Telos.LLM.Interpreter    ( runLLMWithCopilot )
 import           Telos.MCP.Interpreter    ( runMCPWithManager )
-import           Telos.MCP.ServerManager  ( addServer
-                                          , aggregateTools
+import           Telos.MCP.ServerManager  ( aggregateTools
+                                          , getOrConnectServer
                                           , newServerManager
+                                          , registerServer
                                           , shutdownAll
-                                          , twsServerName
-                                          , twsTool
                                           )
-import           Telos.MCP.Types          ( makeServerConfig )
 
 main :: IO ()
 main = do
@@ -48,15 +47,18 @@ main = do
 
   serverMgr <- newServerManager
 
-  let fsConfig
-        = makeServerConfig
-          "filesystem"
-          "npx"
-          [ "-y", "@modelcontextprotocol/server-filesystem", "/tmp" ]
+  let fsEntry = makeMcpServerEntry
+        "filesystem"
+        "npx"
+        [ "-y", "@modelcontextprotocol/server-filesystem", "/tmp" ]
 
+  putStrLn "Registering filesystem MCP server..."
+  registerServer serverMgr fsEntry
+
+  -- Connect lazily by calling getOrConnectServer
   putStrLn "Connecting to filesystem MCP server..."
-  fsResult <- addServer serverMgr fsConfig
-  case fsResult of
+  connResult <- getOrConnectServer serverMgr "filesystem"
+  case connResult of
     Left err -> putStrLn $ "Failed to connect: " ++ show err
     Right _  -> putStrLn "Connected to filesystem server"
 
@@ -64,11 +66,11 @@ main = do
   case toolsResult of
     Left err -> putStrLn $ "Failed to list tools: " ++ show err
     Right toolsWithSource -> do
-      let tools = map (^. twsTool) toolsWithSource
+      let tools = map fst toolsWithSource
       putStrLn $ "Available tools: " ++ show (length tools)
       mapM_
-        (\tws -> TIO.putStrLn
-         $ "  - " <> (tws ^. twsServerName) <> "/" <> (tws ^. twsTool . toolName))
+        (\( tool, serverName ) -> TIO.putStrLn
+         $ "  - " <> serverName <> "/" <> (tool ^. toolName))
         toolsWithSource
 
       let agentCfg

@@ -21,22 +21,17 @@ module Telos.Effect.MCP
   , resName
   , resMimeType
   , resDescription
-  , ResourceContent
-  , makeResourceContent
-  , rcUri
-  , rcMimeType
-  , rcText
-  , rcBlob
   ) where
 
-import           Data.Aeson       ( Value )
+import           Data.Aeson           ( Value )
 
-import           Lens.Micro.TH    ( makeLenses )
+import           Lens.Micro.TH        ( makeLenses )
 
-import           Polysemy         ( makeSem )
+import           Polysemy             ( makeSem )
 
-import           Telos.Core.Error ( MCPError )
-import           Telos.Core.Types ( Tool )
+import           Telos.Core.Error     ( MCPError )
+import           Telos.Core.Types     ( Tool )
+import           Telos.MCP.Types      ( ResourceContents )
 
 data ContentItem
   = TextContent Text
@@ -65,21 +60,10 @@ makeResource :: Text -> Text -> Resource
 makeResource uri name
   = Resource { _resUri = uri, _resName = name, _resMimeType = Nothing, _resDescription = Nothing }
 
-data ResourceContent
-  = ResourceContent
-  { _rcUri :: Text, _rcMimeType :: Maybe Text, _rcText :: Maybe Text, _rcBlob :: Maybe Text }
-  deriving stock ( Eq, Show, Generic )
-
-makeLenses ''ResourceContent
-
-makeResourceContent :: Text -> ResourceContent
-makeResourceContent uri
-  = ResourceContent { _rcUri = uri, _rcMimeType = Nothing, _rcText = Nothing, _rcBlob = Nothing }
-
 data MCP m a where
   ListTools :: MCP m [ Tool ]
   CallTool :: Text -> Value -> MCP m (Either MCPError ToolResult)
   ListResources :: MCP m [ Resource ]
-  ReadResource :: Text -> MCP m (Either MCPError ResourceContent)
+  ReadResource :: Text -> MCP m (Either MCPError ResourceContents)
 
 makeSem ''MCP
