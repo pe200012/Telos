@@ -15,7 +15,7 @@ import           System.Directory     ( createDirectoryIfMissing, doesFileExist 
 import           System.FilePath      ( takeDirectory )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )
-import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, wasFileRead )
+import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, ToolExecutorType(..), wasFileRead )
 
 writeDescription :: Text
 writeDescription = """
@@ -37,7 +37,7 @@ writeTool :: BuiltinTool
 writeTool = BuiltinTool
   { _btTool = makeTool "write" inputSchema
       & toolDescription ?~ writeDescription
-  , _btExecutor = executeWrite
+  , _btExecutor = SimpleExecutor executeWrite
   }
   where
     inputSchema = Aeson.object

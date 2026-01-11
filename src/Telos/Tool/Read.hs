@@ -15,7 +15,7 @@ import           Lens.Micro           ( (?~) )
 import           System.Directory     ( doesFileExist, getModificationTime )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )
-import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, markFileRead )
+import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, ToolExecutorType(..), markFileRead )
 
 readDescription :: Text
 readDescription = """
@@ -38,7 +38,7 @@ readTool :: BuiltinTool
 readTool = BuiltinTool
   { _btTool = makeTool "read" inputSchema
       & toolDescription ?~ readDescription
-  , _btExecutor = executeRead
+  , _btExecutor = SimpleExecutor executeRead
   }
   where
     inputSchema = Aeson.object

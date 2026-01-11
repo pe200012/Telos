@@ -15,7 +15,7 @@ import           Lens.Micro           ( (?~) )
 import           System.Directory     ( doesFileExist )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )
-import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, wasFileRead )
+import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, ToolExecutorType(..), wasFileRead )
 
 editDescription :: Text
 editDescription = """
@@ -41,7 +41,7 @@ editTool :: BuiltinTool
 editTool = BuiltinTool
   { _btTool = makeTool "edit" inputSchema
       & toolDescription ?~ editDescription
-  , _btExecutor = executeEdit
+  , _btExecutor = SimpleExecutor executeEdit
   }
   where
     inputSchema = Aeson.object

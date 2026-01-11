@@ -15,6 +15,9 @@ import           System.FilePath   ( (</>) )
 
 import           Telos.Tool.Edit   ( editTool )
 import           Telos.Tool.Types  ( BuiltinTool(..)
+                                   , ToolContext
+                                   , ToolExecutorType(..)
+                                   , ToolResult
                                    , markFileRead
                                    , newToolContext
                                    , trOutput
@@ -22,6 +25,9 @@ import           Telos.Tool.Types  ( BuiltinTool(..)
                                    )
 
 import           Test.Hspec
+
+runExecutor :: BuiltinTool -> ToolContext -> Aeson.Value -> IO ToolResult
+runExecutor bt = case _btExecutor bt of { SimpleExecutor f -> f; _ -> error "Not a SimpleExecutor" }
 
 spec :: Spec
 spec = describe "EditTool" $ do
@@ -36,7 +42,7 @@ spec = describe "EditTool" $ do
                 , "oldString" Aeson..= ("world" :: Text)
                 , "newString" Aeson..= ("universe" :: Text)
                 ]
-        result <- (_btExecutor editTool) ctx args
+        result <- runExecutor editTool ctx args
         result ^. trSuccess `shouldBe` True
         content <- TIO.readFile (toString path)
         content `shouldBe` "hello universe"
@@ -51,7 +57,7 @@ spec = describe "EditTool" $ do
                 , "oldString" Aeson..= ("old text" :: Text)
                 , "newString" Aeson..= ("new text" :: Text)
                 ]
-        result <- (_btExecutor editTool) ctx args
+        result <- runExecutor editTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "-old text"
         result ^. trOutput `shouldSatisfy` T.isInfixOf "+new text"
@@ -67,7 +73,7 @@ spec = describe "EditTool" $ do
                 , "oldString" Aeson..= ("foo" :: Text)
                 , "newString" Aeson..= ("qux" :: Text)
                 ]
-        result <- (_btExecutor editTool) ctx args
+        result <- runExecutor editTool ctx args
         result ^. trSuccess `shouldBe` False
         result ^. trOutput `shouldSatisfy` T.isInfixOf "3 times"
 
@@ -82,7 +88,7 @@ spec = describe "EditTool" $ do
                 , "newString" Aeson..= ("qux" :: Text)
                 , "replaceAll" Aeson..= True
                 ]
-        result <- (_btExecutor editTool) ctx args
+        result <- runExecutor editTool ctx args
         result ^. trSuccess `shouldBe` True
         content <- TIO.readFile (toString path)
         content `shouldBe` "qux bar qux baz qux"
@@ -99,7 +105,7 @@ spec = describe "EditTool" $ do
                 , "oldString" Aeson..= ("xyz" :: Text)
                 , "newString" Aeson..= ("abc" :: Text)
                 ]
-        result <- (_btExecutor editTool) ctx args
+        result <- runExecutor editTool ctx args
         result ^. trSuccess `shouldBe` False
         result ^. trOutput `shouldSatisfy` T.isInfixOf "not found"
 
@@ -114,7 +120,7 @@ spec = describe "EditTool" $ do
                 , "oldString" Aeson..= ("hello" :: Text)
                 , "newString" Aeson..= ("hello" :: Text)
                 ]
-        result <- (_btExecutor editTool) ctx args
+        result <- runExecutor editTool ctx args
         result ^. trSuccess `shouldBe` False
         result ^. trOutput `shouldSatisfy` T.isInfixOf "must be different"
 
@@ -127,7 +133,7 @@ spec = describe "EditTool" $ do
               , "oldString" Aeson..= ("a" :: Text)
               , "newString" Aeson..= ("b" :: Text)
               ]
-      result <- (_btExecutor editTool) ctx args
+      result <- runExecutor editTool ctx args
       result ^. trSuccess `shouldBe` False
       result ^. trOutput `shouldSatisfy` T.isInfixOf "not found"
 
@@ -141,7 +147,7 @@ spec = describe "EditTool" $ do
                 , "oldString" Aeson..= ("hello" :: Text)
                 , "newString" Aeson..= ("hi" :: Text)
                 ]
-        result <- (_btExecutor editTool) ctx args
+        result <- runExecutor editTool ctx args
         result ^. trSuccess `shouldBe` False
         result ^. trOutput `shouldSatisfy` T.isInfixOf "must Read"
 
@@ -156,7 +162,7 @@ spec = describe "EditTool" $ do
                 , "oldString" Aeson..= ("line1\nline2" :: Text)
                 , "newString" Aeson..= ("replaced" :: Text)
                 ]
-        result <- (_btExecutor editTool) ctx args
+        result <- runExecutor editTool ctx args
         result ^. trSuccess `shouldBe` True
         content <- TIO.readFile (toString path)
         content `shouldBe` "replaced\nline3"
@@ -165,7 +171,7 @@ spec = describe "EditTool" $ do
     it "fails with missing required fields" $ do
       ctx <- newToolContext
       let args = Aeson.object [ "path" Aeson..= ("/tmp/test.txt" :: Text) ]
-      result <- (_btExecutor editTool) ctx args
+      result <- runExecutor editTool ctx args
       result ^. trSuccess `shouldBe` False
 
 withTempFile :: Text -> (Text -> IO a) -> IO a

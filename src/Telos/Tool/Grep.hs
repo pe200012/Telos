@@ -16,7 +16,7 @@ import           System.FilePath.Glob ( compile, globDir1 )
 import           Text.Regex.TDFA      ( (=~) )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )
-import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext )
+import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, ToolExecutorType(..) )
 
 grepDescription :: Text
 grepDescription = """
@@ -39,7 +39,7 @@ grepTool :: BuiltinTool
 grepTool = BuiltinTool
   { _btTool = makeTool "grep" inputSchema
       & toolDescription ?~ grepDescription
-  , _btExecutor = executeGrep
+  , _btExecutor = SimpleExecutor executeGrep
   }
   where
     inputSchema = Aeson.object

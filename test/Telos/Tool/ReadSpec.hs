@@ -14,9 +14,19 @@ import           System.Directory  ( getTemporaryDirectory, removeFile )
 import           System.FilePath   ( (</>) )
 
 import           Telos.Tool.Read   ( readTool )
-import           Telos.Tool.Types  ( BuiltinTool(..), newToolContext, trOutput, trSuccess )
+import           Telos.Tool.Types  ( BuiltinTool(..)
+                                   , ToolContext
+                                   , ToolExecutorType(..)
+                                   , ToolResult
+                                   , newToolContext
+                                   , trOutput
+                                   , trSuccess
+                                   )
 
 import           Test.Hspec
+
+runExecutor :: BuiltinTool -> ToolContext -> Aeson.Value -> IO ToolResult
+runExecutor bt = case _btExecutor bt of { SimpleExecutor f -> f; _ -> error "Not a SimpleExecutor" }
 
 spec :: Spec
 spec = describe "ReadTool" $ do
@@ -25,7 +35,7 @@ spec = describe "ReadTool" $ do
       withTempFile "line1\nline2\nline3\n" $ \path -> do
         ctx <- newToolContext
         let args = Aeson.object [ "path" Aeson..= path ]
-        result <- (_btExecutor readTool) ctx args
+        result <- runExecutor readTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "1\tline1"
         result ^. trOutput `shouldSatisfy` T.isInfixOf "2\tline2"
@@ -35,7 +45,7 @@ spec = describe "ReadTool" $ do
       withTempFile "" $ \path -> do
         ctx <- newToolContext
         let args = Aeson.object [ "path" Aeson..= path ]
-        result <- (_btExecutor readTool) ctx args
+        result <- runExecutor readTool ctx args
         result ^. trSuccess `shouldBe` True
 
   describe "offset and limit" $ do
@@ -43,7 +53,7 @@ spec = describe "ReadTool" $ do
       withTempFile "line1\nline2\nline3\nline4\n" $ \path -> do
         ctx <- newToolContext
         let args = Aeson.object [ "path" Aeson..= path, "offset" Aeson..= (2 :: Int) ]
-        result <- (_btExecutor readTool) ctx args
+        result <- runExecutor readTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "3\tline3"
         result ^. trOutput `shouldSatisfy` (not . T.isInfixOf "1\tline1")
@@ -52,7 +62,7 @@ spec = describe "ReadTool" $ do
       withTempFile "line1\nline2\nline3\nline4\n" $ \path -> do
         ctx <- newToolContext
         let args = Aeson.object [ "path" Aeson..= path, "limit" Aeson..= (2 :: Int) ]
-        result <- (_btExecutor readTool) ctx args
+        result <- runExecutor readTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "1\tline1"
         result ^. trOutput `shouldSatisfy` T.isInfixOf "2\tline2"
@@ -64,7 +74,7 @@ spec = describe "ReadTool" $ do
         let args
               = Aeson.object
                 [ "path" Aeson..= path, "offset" Aeson..= (1 :: Int), "limit" Aeson..= (2 :: Int) ]
-        result <- (_btExecutor readTool) ctx args
+        result <- runExecutor readTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "2\tb"
         result ^. trOutput `shouldSatisfy` T.isInfixOf "3\tc"
@@ -76,7 +86,7 @@ spec = describe "ReadTool" $ do
       withTempBinaryFile (BS.pack [ 0x48, 0x65, 0x6c, 0x00, 0x6c, 0x6f ]) $ \path -> do
         ctx <- newToolContext
         let args = Aeson.object [ "path" Aeson..= path ]
-        result <- (_btExecutor readTool) ctx args
+        result <- runExecutor readTool ctx args
         result ^. trSuccess `shouldBe` False
         result ^. trOutput `shouldSatisfy` T.isInfixOf "binary"
 
@@ -84,7 +94,7 @@ spec = describe "ReadTool" $ do
     it "returns error for non-existent file" $ do
       ctx <- newToolContext
       let args = Aeson.object [ "path" Aeson..= ("/nonexistent_file_12345.txt" :: Text) ]
-      result <- (_btExecutor readTool) ctx args
+      result <- runExecutor readTool ctx args
       result ^. trSuccess `shouldBe` False
       result ^. trOutput `shouldSatisfy` T.isInfixOf "not found"
 
@@ -93,7 +103,7 @@ spec = describe "ReadTool" $ do
       withTempFile (T.replicate 3000 "x") $ \path -> do
         ctx <- newToolContext
         let args = Aeson.object [ "path" Aeson..= path ]
-        result <- (_btExecutor readTool) ctx args
+        result <- runExecutor readTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "..."
         T.length (result ^. trOutput) `shouldSatisfy` (< 2500)
@@ -102,7 +112,7 @@ spec = describe "ReadTool" $ do
     it "fails with missing path" $ do
       ctx <- newToolContext
       let args = Aeson.object []
-      result <- (_btExecutor readTool) ctx args
+      result <- runExecutor readTool ctx args
       result ^. trSuccess `shouldBe` False
       result ^. trOutput `shouldSatisfy` T.isInfixOf "Invalid arguments"
 

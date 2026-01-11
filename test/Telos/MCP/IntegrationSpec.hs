@@ -6,6 +6,7 @@ import           Lens.Micro              ( (^.) )
 
 import           Relude
 
+import           Telos.CLI.Config         ( makeMcpServerEntry )
 import           Telos.MCP.Client
 import           Telos.MCP.ServerManager
 import           Telos.MCP.Types
@@ -60,18 +61,15 @@ spec = do
     describe "ServerManager" $ do
       it "manages multiple tool aggregation" $ do
         mgr <- newServerManager
-        let config
-              = makeServerConfig
+        let entry
+              = makeMcpServerEntry
                 "filesystem"
                 "npx"
                 [ "-y", "@modelcontextprotocol/server-filesystem", "/tmp" ]
-        addResult <- addServer mgr config
-        case addResult of
-          Left err    -> expectationFailure $ "Failed to add server: " <> show err
-          Right _conn -> do
-            toolsResult <- aggregateTools mgr
-            shutdownAll mgr
-            case toolsResult of
-              Left err    -> expectationFailure $ "Failed to aggregate tools: " <> show err
-              Right tools -> do
-                length tools `shouldSatisfy` (> 0)
+        registerServer mgr entry
+        toolsResult <- aggregateTools mgr
+        shutdownAll mgr
+        case toolsResult of
+          Left err    -> expectationFailure $ "Failed to aggregate tools: " <> show err
+          Right tools -> do
+            length tools `shouldSatisfy` (> 0)

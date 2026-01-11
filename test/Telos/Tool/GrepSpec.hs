@@ -16,9 +16,19 @@ import           System.Directory  ( createDirectoryIfMissing
 import           System.FilePath   ( (</>) )
 
 import           Telos.Tool.Grep   ( grepTool )
-import           Telos.Tool.Types  ( BuiltinTool(..), newToolContext, trOutput, trSuccess )
+import           Telos.Tool.Types  ( BuiltinTool(..)
+                                   , ToolContext
+                                   , ToolExecutorType(..)
+                                   , ToolResult
+                                   , newToolContext
+                                   , trOutput
+                                   , trSuccess
+                                   )
 
 import           Test.Hspec
+
+runExecutor :: BuiltinTool -> ToolContext -> Aeson.Value -> IO ToolResult
+runExecutor bt = case _btExecutor bt of { SimpleExecutor f -> f; _ -> error "Not a SimpleExecutor" }
 
 spec :: Spec
 spec = describe "GrepTool" $ do
@@ -29,7 +39,7 @@ spec = describe "GrepTool" $ do
         ctx <- newToolContext
         let args
               = Aeson.object [ "pattern" Aeson..= ("hello" :: Text), "path" Aeson..= toText dir ]
-        result <- (_btExecutor grepTool) ctx args
+        result <- runExecutor grepTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "hello world"
         result ^. trOutput `shouldSatisfy` T.isInfixOf "hello again"
@@ -41,7 +51,7 @@ spec = describe "GrepTool" $ do
         let args
               = Aeson.object
                 [ "pattern" Aeson..= ("foo[0-9]+bar" :: Text), "path" Aeson..= toText dir ]
-        result <- (_btExecutor grepTool) ctx args
+        result <- runExecutor grepTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "foo123bar"
         result ^. trOutput `shouldSatisfy` T.isInfixOf "foo456bar"
@@ -59,7 +69,7 @@ spec = describe "GrepTool" $ do
                 , "path" Aeson..= toText dir
                 , "include" Aeson..= ("*.hs" :: Text)
                 ]
-        result <- (_btExecutor grepTool) ctx args
+        result <- runExecutor grepTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "haskell"
         result ^. trOutput `shouldSatisfy` (not . T.isInfixOf "python")
@@ -71,7 +81,7 @@ spec = describe "GrepTool" $ do
         ctx <- newToolContext
         let args
               = Aeson.object [ "pattern" Aeson..= ("xyz123" :: Text), "path" Aeson..= toText dir ]
-        result <- (_btExecutor grepTool) ctx args
+        result <- runExecutor grepTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "No matches"
 
@@ -84,7 +94,7 @@ spec = describe "GrepTool" $ do
         ctx <- newToolContext
         let args
               = Aeson.object [ "pattern" Aeson..= ("findme" :: Text), "path" Aeson..= toText dir ]
-        result <- (_btExecutor grepTool) ctx args
+        result <- runExecutor grepTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf "root"
         result ^. trOutput `shouldSatisfy` T.isInfixOf "nested"
@@ -96,7 +106,7 @@ spec = describe "GrepTool" $ do
         ctx <- newToolContext
         let args
               = Aeson.object [ "pattern" Aeson..= ("match" :: Text), "path" Aeson..= toText dir ]
-        result <- (_btExecutor grepTool) ctx args
+        result <- runExecutor grepTool ctx args
         result ^. trSuccess `shouldBe` True
         result ^. trOutput `shouldSatisfy` T.isInfixOf ":2:"
 
@@ -104,7 +114,7 @@ spec = describe "GrepTool" $ do
     it "fails with missing pattern" $ do
       ctx <- newToolContext
       let args = Aeson.object [ "path" Aeson..= ("/tmp" :: Text) ]
-      result <- (_btExecutor grepTool) ctx args
+      result <- runExecutor grepTool ctx args
       result ^. trSuccess `shouldBe` False
 
 withTempDir :: (FilePath -> IO a) -> IO a

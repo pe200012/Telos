@@ -5,7 +5,6 @@ import           Control.Concurrent.MVar ( isEmptyMVar )
 import           Lens.Micro              ( (^.) )
 
 import           Relude
-import           Relude
 
 import           Telos.Agent.Config      ( defaultAgentConfig )
 import           Telos.Agent.Context     ( ctxInterrupt, newAgentContext )

@@ -1,11 +1,14 @@
 module Telos.Tool.Types
   ( ToolExecutor
+  , ToolExecutorType(..)
   , ToolResult(..)
   , trSuccess
   , trOutput
+  , mkToolResult
   , BuiltinTool(..)
   , btTool
   , btExecutor
+  , runSimpleExecutor
   , ToolContext(..)
   , tcReadFiles
   , FileReadInfo(..)
@@ -32,6 +35,9 @@ data ToolResult = ToolResult { _trSuccess :: Bool, _trOutput :: Text }
 
 makeLenses ''ToolResult
 
+mkToolResult :: Bool -> Text -> ToolResult
+mkToolResult = ToolResult
+
 data FileReadInfo = FileReadInfo { _friReadTime :: UTCTime, _friModTime :: Maybe UTCTime }
   deriving stock ( Eq, Show )
 
@@ -56,8 +62,22 @@ wasFileRead ctx path = Map.member path <$> readTVarIO (_tcReadFiles ctx)
 getFileReadTime :: ToolContext -> FilePath -> IO (Maybe FileReadInfo)
 getFileReadTime ctx path = Map.lookup path <$> readTVarIO (_tcReadFiles ctx)
 
+-- | Simple tool executor that only needs ToolContext
 type ToolExecutor = ToolContext -> Value -> IO ToolResult
 
-data BuiltinTool = BuiltinTool { _btTool :: Tool, _btExecutor :: ToolExecutor }
+-- | Executor type that supports both simple and agent-aware tools
+-- AgentExecutor will be used by tools like 'task' that need to spawn subagents
+data ToolExecutorType
+  = SimpleExecutor ToolExecutor
+  | AgentExecutor  -- Placeholder: actual implementation requires AgentContext
+  deriving stock ( Generic )
+
+data BuiltinTool = BuiltinTool { _btTool :: Tool, _btExecutor :: ToolExecutorType }
 
 makeLenses ''BuiltinTool
+
+-- | Extract the executor function from a SimpleExecutor, or return Nothing for AgentExecutor
+runSimpleExecutor :: BuiltinTool -> Maybe ToolExecutor
+runSimpleExecutor bt = case _btExecutor bt of
+  SimpleExecutor exec -> Just exec
+  AgentExecutor       -> Nothing

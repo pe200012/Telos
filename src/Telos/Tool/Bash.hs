@@ -20,7 +20,7 @@ import           System.Process.Typed ( proc
 import           System.Timeout       ( timeout )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )
-import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext )
+import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, ToolExecutorType(..) )
 
 bashDescription :: Text
 bashDescription = """
@@ -47,7 +47,7 @@ bashTool :: BuiltinTool
 bashTool = BuiltinTool
   { _btTool = makeTool "bash" inputSchema
       & toolDescription ?~ bashDescription
-  , _btExecutor = executeBash
+  , _btExecutor = SimpleExecutor executeBash
   }
   where
     inputSchema = Aeson.object

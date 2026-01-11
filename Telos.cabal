@@ -30,6 +30,7 @@ library
       Telos.Agent.Interrupt
       Telos.Agent.Loop
       Telos.Agent.Streaming
+      Telos.Agent.Subagent
       Telos.App
       Telos.CLI.Config
       Telos.CLI.Repl
@@ -65,6 +66,7 @@ library
       Telos.Tool.Grep
       Telos.Tool.Read
       Telos.Tool.Registry
+      Telos.Tool.Task
       Telos.Tool.Types
       Telos.Tool.Write
   other-modules:
@@ -116,6 +118,7 @@ library
     , http-conduit
     , http-types
     , microlens
+    , microlens-aeson
     , microlens-pro
     , microlens-th
     , mtl
@@ -191,6 +194,7 @@ executable Telos-exe
     , http-conduit
     , http-types
     , microlens
+    , microlens-aeson
     , microlens-pro
     , microlens-th
     , mtl
@@ -266,6 +270,7 @@ executable test-agent
     , http-conduit
     , http-types
     , microlens
+    , microlens-aeson
     , microlens-pro
     , microlens-th
     , mtl
@@ -341,6 +346,7 @@ executable test-copilot
     , http-conduit
     , http-types
     , microlens
+    , microlens-aeson
     , microlens-pro
     , microlens-th
     , mtl
@@ -371,6 +377,7 @@ test-suite Telos-test
       Telos.Agent.InterruptSpec
       Telos.Agent.LoopSpec
       Telos.Agent.StreamingSpec
+      Telos.Agent.SubagentSpec
       Telos.Effect.StreamOutputSpec
       Telos.MCP.ClientSpec
       Telos.MCP.IntegrationSpec
@@ -436,6 +443,7 @@ test-suite Telos-test
     , http-conduit
     , http-types
     , microlens
+    , microlens-aeson
     , microlens-pro
     , microlens-th
     , mtl

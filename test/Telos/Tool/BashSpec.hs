@@ -8,9 +8,19 @@ import           Lens.Micro       ( (^.) )
 import           Relude
 
 import           Telos.Tool.Bash  ( bashTool )
-import           Telos.Tool.Types ( BuiltinTool(..), newToolContext, trOutput, trSuccess )
+import           Telos.Tool.Types ( BuiltinTool(..)
+                                  , ToolContext
+                                  , ToolExecutorType(..)
+                                  , ToolResult
+                                  , newToolContext
+                                  , trOutput
+                                  , trSuccess
+                                  )
 
 import           Test.Hspec
+
+runExecutor :: BuiltinTool -> ToolContext -> Aeson.Value -> IO ToolResult
+runExecutor bt = case _btExecutor bt of { SimpleExecutor f -> f; _ -> error "Not a SimpleExecutor" }
 
 spec :: Spec
 spec = describe "BashTool" $ do
@@ -18,20 +28,20 @@ spec = describe "BashTool" $ do
     it "executes simple echo command" $ do
       ctx <- newToolContext
       let args = Aeson.object [ "command" Aeson..= ("echo hello" :: Text) ]
-      result <- (_btExecutor bashTool) ctx args
+      result <- runExecutor bashTool ctx args
       result ^. trSuccess `shouldBe` True
       result ^. trOutput `shouldSatisfy` T.isInfixOf "hello"
 
     it "returns exit code in success flag" $ do
       ctx <- newToolContext
       let args = Aeson.object [ "command" Aeson..= ("exit 1" :: Text) ]
-      result <- (_btExecutor bashTool) ctx args
+      result <- runExecutor bashTool ctx args
       result ^. trSuccess `shouldBe` False
 
     it "captures stderr output" $ do
       ctx <- newToolContext
       let args = Aeson.object [ "command" Aeson..= ("echo error >&2" :: Text) ]
-      result <- (_btExecutor bashTool) ctx args
+      result <- runExecutor bashTool ctx args
       result ^. trSuccess `shouldBe` True
       result ^. trOutput `shouldSatisfy` T.isInfixOf "error"
 
@@ -41,7 +51,7 @@ spec = describe "BashTool" $ do
       let args
             = Aeson.object
               [ "command" Aeson..= ("pwd" :: Text), "workdir" Aeson..= ("/tmp" :: Text) ]
-      result <- (_btExecutor bashTool) ctx args
+      result <- runExecutor bashTool ctx args
       result ^. trSuccess `shouldBe` True
       result ^. trOutput `shouldSatisfy` T.isInfixOf "/tmp"
 
@@ -52,7 +62,7 @@ spec = describe "BashTool" $ do
               [ "command" Aeson..= ("pwd" :: Text)
               , "workdir" Aeson..= ("/nonexistent_dir_12345" :: Text)
               ]
-      result <- (_btExecutor bashTool) ctx args
+      result <- runExecutor bashTool ctx args
       result ^. trSuccess `shouldBe` False
 
   describe "timeout parameter" $ do
@@ -61,7 +71,7 @@ spec = describe "BashTool" $ do
       let args
             = Aeson.object
               [ "command" Aeson..= ("sleep 10" :: Text), "timeout" Aeson..= (100 :: Int) ]
-      result <- (_btExecutor bashTool) ctx args
+      result <- runExecutor bashTool ctx args
       result ^. trSuccess `shouldBe` False
       result ^. trOutput `shouldSatisfy` T.isInfixOf "timed out"
 
@@ -70,14 +80,14 @@ spec = describe "BashTool" $ do
       let args
             = Aeson.object
               [ "command" Aeson..= ("echo fast" :: Text), "timeout" Aeson..= (5000 :: Int) ]
-      result <- (_btExecutor bashTool) ctx args
+      result <- runExecutor bashTool ctx args
       result ^. trSuccess `shouldBe` True
 
   describe "output truncation" $ do
     it "truncates very long output" $ do
       ctx <- newToolContext
       let args = Aeson.object [ "command" Aeson..= ("yes | head -100000" :: Text) ]
-      result <- (_btExecutor bashTool) ctx args
+      result <- runExecutor bashTool ctx args
       result ^. trSuccess `shouldBe` True
       T.length (result ^. trOutput) `shouldSatisfy` (< 60000)
       result ^. trOutput `shouldSatisfy` T.isInfixOf "truncated"
@@ -86,12 +96,12 @@ spec = describe "BashTool" $ do
     it "fails with missing command" $ do
       ctx <- newToolContext
       let args = Aeson.object []
-      result <- (_btExecutor bashTool) ctx args
+      result <- runExecutor bashTool ctx args
       result ^. trSuccess `shouldBe` False
       result ^. trOutput `shouldSatisfy` T.isInfixOf "Invalid arguments"
 
     it "fails with invalid argument type" $ do
       ctx <- newToolContext
       let args = Aeson.object [ "command" Aeson..= (123 :: Int) ]
-      result <- (_btExecutor bashTool) ctx args
+      result <- runExecutor bashTool ctx args
       result ^. trSuccess `shouldBe` False

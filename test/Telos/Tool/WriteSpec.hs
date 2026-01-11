@@ -19,6 +19,9 @@ import           System.FilePath   ( (</>) )
 
 import           Telos.Tool.Read   ( readTool )
 import           Telos.Tool.Types  ( BuiltinTool(..)
+                                   , ToolContext
+                                   , ToolExecutorType(..)
+                                   , ToolResult(..)
                                    , markFileRead
                                    , newToolContext
                                    , trOutput
@@ -27,6 +30,9 @@ import           Telos.Tool.Types  ( BuiltinTool(..)
 import           Telos.Tool.Write  ( writeTool )
 
 import           Test.Hspec
+
+runExecutor :: BuiltinTool -> ToolContext -> Aeson.Value -> IO ToolResult
+runExecutor bt = case _btExecutor bt of { SimpleExecutor f -> f; _ -> error "Not a SimpleExecutor" }
 
 spec :: Spec
 spec = describe "WriteTool" $ do
@@ -39,7 +45,7 @@ spec = describe "WriteTool" $ do
         let args
               = Aeson.object
                 [ "path" Aeson..= toText path, "content" Aeson..= ("hello world" :: Text) ]
-        result <- (_btExecutor writeTool) ctx args
+        result <- runExecutor writeTool ctx args
         result ^. trSuccess `shouldBe` True
         content <- TIO.readFile path
         content `shouldBe` "hello world"
@@ -53,7 +59,7 @@ spec = describe "WriteTool" $ do
         let args
               = Aeson.object
                 [ "path" Aeson..= toText path, "content" Aeson..= ("nested content" :: Text) ]
-        result <- (_btExecutor writeTool) ctx args
+        result <- runExecutor writeTool ctx args
         result ^. trSuccess `shouldBe` True
         exists <- doesFileExist path
         exists `shouldBe` True
@@ -64,7 +70,7 @@ spec = describe "WriteTool" $ do
         ctx <- newToolContext
         let args
               = Aeson.object [ "path" Aeson..= path, "content" Aeson..= ("new content" :: Text) ]
-        result <- (_btExecutor writeTool) ctx args
+        result <- runExecutor writeTool ctx args
         result ^. trSuccess `shouldBe` False
         result ^. trOutput `shouldSatisfy` T.isInfixOf "must Read"
 
@@ -74,7 +80,7 @@ spec = describe "WriteTool" $ do
         markFileRead ctx (toString path) Nothing
         let args
               = Aeson.object [ "path" Aeson..= path, "content" Aeson..= ("new content" :: Text) ]
-        result <- (_btExecutor writeTool) ctx args
+        result <- runExecutor writeTool ctx args
         result ^. trSuccess `shouldBe` True
         content <- TIO.readFile (toString path)
         content `shouldBe` "new content"
@@ -83,23 +89,23 @@ spec = describe "WriteTool" $ do
       withExistingFile "original" $ \path -> do
         ctx <- newToolContext
         let readArgs = Aeson.object [ "path" Aeson..= path ]
-        _ <- (_btExecutor readTool) ctx readArgs
+        _ <- runExecutor readTool ctx readArgs
         let writeArgs
               = Aeson.object [ "path" Aeson..= path, "content" Aeson..= ("updated" :: Text) ]
-        result <- (_btExecutor writeTool) ctx writeArgs
+        result <- runExecutor writeTool ctx writeArgs
         result ^. trSuccess `shouldBe` True
 
   describe "argument validation" $ do
     it "fails with missing path" $ do
       ctx <- newToolContext
       let args = Aeson.object [ "content" Aeson..= ("hello" :: Text) ]
-      result <- (_btExecutor writeTool) ctx args
+      result <- runExecutor writeTool ctx args
       result ^. trSuccess `shouldBe` False
 
     it "fails with missing content" $ do
       ctx <- newToolContext
       let args = Aeson.object [ "path" Aeson..= ("/tmp/test.txt" :: Text) ]
-      result <- (_btExecutor writeTool) ctx args
+      result <- runExecutor writeTool ctx args
       result ^. trSuccess `shouldBe` False
 
 withExistingFile :: Text -> (Text -> IO a) -> IO a

@@ -14,17 +14,19 @@ module Telos.Agent.Loop
   , mcpToolToCoreTool
   ) where
 
+import           Data.Aeson                ( Value )
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 
-import           Lens.Micro                ( (.~), (^.), _last, non )
+import           Lens.Micro                ( (.~), (^?), (^.), _last, non )
+import           Lens.Micro.Aeson          ( key, _String, _Integer )
 
 import           Polysemy                  ( Embed, Members, Sem, embed )
 
 import           Relude
 
 import           Telos.Agent.Config        ( acMaxIterations, acPromptConfig )
-import           Telos.Agent.Context       ( AgentContext
+import           Telos.Agent.Context       ( AgentContext(..)
                                            , addMessage
                                            , ctxConfig
                                            , ctxInterrupt
@@ -37,6 +39,10 @@ import           Telos.Agent.Context       ( AgentContext
                                            )
 import           Telos.Agent.Interrupt     ( checkInterrupted )
 import           Telos.Agent.Streaming     ( StreamConsumeResult(..), consumeStreamWithInterrupt )
+import           Telos.Agent.Subagent      ( SubagentConfig(..)
+                                           , SubagentResult(..)
+                                           , runSubagent
+                                           )
 import qualified Telos.Core.Types          as Core
 import           Telos.Core.Types          ( _AssistantMsg )
 import           Telos.Effect.LLM          ( LLM, chat, chatStream )
@@ -51,7 +57,7 @@ import           Telos.Effect.MCP          ( ContentItem(..)
 import           Telos.Effect.StreamOutput ( StreamOutput, flushOutput, outputNewline )
 import qualified Telos.MCP.Types           as MCP
 import           Telos.Prompt.Builder      ( buildSystemPrompt )
-import           Telos.Tool.Registry       ( executeBuiltinTool )
+import           Telos.Tool.Registry       ( executeBuiltinTool, isAgentTool, taskToolName )
 import qualified Telos.Tool.Types          as ToolTypes
 
 data AgentResult
@@ -226,7 +232,7 @@ streamEventHandler = \case
   Core.Ping -> pure ()
 
 -- | Handle assistant message (shared between streaming and non-streaming)
-handleAssistantMessage :: Members '[ MCP, Logger, Embed IO ] r
+handleAssistantMessage :: Members '[ LLM, MCP, Logger, Embed IO ] r
                        => AgentContext
                        -> Core.AssistantMessage
                        -> Sem r (Either AgentResult ())
@@ -249,7 +255,7 @@ handleAssistantMessage ctx assistantMsg = do
           else ""
       pure $ Left $ AgentResponse content
 
-executeToolCalls :: Members '[ MCP, Logger, Embed IO ] r
+executeToolCalls :: Members '[ LLM, MCP, Logger, Embed IO ] r
                  => AgentContext
                  -> [ Core.ToolCall ]
                  -> Sem r [ Core.Message ]
@@ -262,30 +268,111 @@ executeToolCalls ctx toolCalls = do
 
     logDebug $ "Executing tool: " <> tName
 
-    -- Try builtin tool first
-    mBuiltinResult <- embed $ executeBuiltinTool toolCtx tName toolArgs
+    -- Check if this is an agent-aware tool (like 'task')
+    if isAgentTool tName
+      then executeAgentTool ctx tc
+      else do
+        -- Try builtin tool first
+        mBuiltinResult <- embed $ executeBuiltinTool toolCtx tName toolArgs
 
-    case mBuiltinResult of
-      Just builtinResult -> do
-        let content = builtinResult ^. ToolTypes.trOutput
-            isError = not (builtinResult ^. ToolTypes.trSuccess)
-        logDebug $ "Builtin tool result: " <> content
-        pure $ Core.ToolResultMessage toolId tName content isError
-
-      Nothing -> do
-        -- Fallback to MCP tool
-        result <- callTool tName toolArgs
-
-        case result of
-          Left err         -> do
-            logWarn $ "Tool error: " <> T.pack (show err)
-            pure $ Core.ToolResultMessage toolId tName (T.pack $ show err) True
-
-          Right toolResult -> do
-            let content = formatToolResult toolResult
-                isError = toolResult ^. trIsError
-            logDebug $ "Tool result: " <> content
+        case mBuiltinResult of
+          Just builtinResult -> do
+            let content = builtinResult ^. ToolTypes.trOutput
+                isError = not (builtinResult ^. ToolTypes.trSuccess)
+            logDebug $ "Builtin tool result: " <> content
             pure $ Core.ToolResultMessage toolId tName content isError
+
+          Nothing -> do
+            -- Fallback to MCP tool
+            result <- callTool tName toolArgs
+
+            case result of
+              Left err         -> do
+                logWarn $ "Tool error: " <> T.pack (show err)
+                pure $ Core.ToolResultMessage toolId tName (T.pack $ show err) True
+
+              Right toolResult -> do
+                let content = formatToolResult toolResult
+                    isError = toolResult ^. trIsError
+                logDebug $ "Tool result: " <> content
+                pure $ Core.ToolResultMessage toolId tName content isError
+
+-- | Execute an agent-aware tool (like 'task')
+executeAgentTool :: Members '[ LLM, MCP, Logger, Embed IO ] r
+                 => AgentContext
+                 -> Core.ToolCall
+                 -> Sem r Core.Message
+executeAgentTool ctx tc = do
+  let tName    = tc ^. Core.tcName
+      toolArgs = tc ^. Core.tcArguments
+      toolId   = tc ^. Core.tcId
+
+  if tName == taskToolName
+    then executeTaskTool ctx toolId toolArgs
+    else do
+      -- Unknown agent tool
+      logWarn $ "Unknown agent tool: " <> tName
+      pure $ Core.ToolResultMessage toolId tName ("Unknown agent tool: " <> tName) True
+
+-- | Execute the 'task' tool to spawn a subagent
+executeTaskTool :: Members '[ LLM, MCP, Logger, Embed IO ] r
+                => AgentContext
+                -> Text  -- ^ Tool call ID
+                -> Value -- ^ Arguments
+                -> Sem r Core.Message
+executeTaskTool ctx toolId args = do
+  -- Parse arguments
+  let mPrompt = args ^? key "prompt" . _String
+      maxIter = fromMaybe 10 $ args ^? key "max_iterations" . _Integer
+      mDesc   = args ^? key "description" . _String
+
+  case mPrompt of
+    Nothing -> do
+      logWarn "Task tool missing required 'prompt' parameter"
+      pure $ Core.ToolResultMessage toolId taskToolName "Missing required parameter: prompt" True
+
+    Just prompt -> do
+      logInfo $ "Spawning subagent: " <> fromMaybe (T.take 50 prompt) mDesc
+
+      let cfg = SubagentConfig
+            { _sacPrompt        = prompt
+            , _sacMaxIterations = fromIntegral maxIter
+            , _sacMaxDepth      = 3
+            , _sacCurrentDepth  = 0  -- TODO: track depth through parent context
+            }
+
+      -- Run subagent using the non-streaming loop
+      result <- runSubagent subagentRunner ctx cfg
+
+      case result of
+        SubagentSuccess response -> do
+          logInfo "Subagent completed successfully"
+          pure $ Core.ToolResultMessage toolId taskToolName response False
+
+        SubagentError err -> do
+          logWarn $ "Subagent error: " <> err
+          pure $ Core.ToolResultMessage toolId taskToolName ("Subagent error: " <> err) True
+
+        SubagentMaxIterations -> do
+          logWarn "Subagent hit max iterations"
+          pure $ Core.ToolResultMessage toolId taskToolName "Subagent reached maximum iterations" True
+
+        SubagentInterrupted -> do
+          logInfo "Subagent was interrupted"
+          pure $ Core.ToolResultMessage toolId taskToolName "Subagent was interrupted" True
+
+-- | Runner function for subagents (converts AgentResult to SubagentResult)
+subagentRunner :: Members '[ LLM, MCP, Logger, Embed IO ] r
+               => AgentContext
+               -> Text
+               -> Sem r SubagentResult
+subagentRunner ctx prompt = do
+  result <- runAgentLoop ctx prompt
+  pure $ case result of
+    AgentResponse txt     -> SubagentSuccess txt
+    AgentInterrupted _    -> SubagentInterrupted
+    AgentMaxIterations _  -> SubagentMaxIterations
+    AgentError err        -> SubagentError err
 
 formatToolResult :: ToolResult -> Text
 formatToolResult result = T.intercalate "\n" $ map formatContentItem (result ^. trContent)

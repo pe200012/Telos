@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Telos.Agent.Context
-  ( AgentContext
+  ( AgentContext(..)
   , ctxHistory
   , ctxTools
   , ctxInterrupt

@@ -16,7 +16,7 @@ spec = do
         (defaultAgentConfig ^. acMaxIterations) `shouldBe` 20
 
       it "has no system prompt by default" $ do
-        (defaultAgentConfig ^. acSystemPrompt) `shouldBe` Nothing
+        (defaultAgentConfig ^. acPromptConfig) `shouldBe` Nothing
 
       it "has default model gpt-4" $ do
         (defaultAgentConfig ^. acModel) `shouldBe` "gpt-4"

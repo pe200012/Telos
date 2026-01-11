@@ -14,7 +14,7 @@ import           System.Directory     ( doesDirectoryExist )
 import           System.FilePath.Glob ( compile, globDir1 )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )
-import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext )
+import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, ToolExecutorType(..) )
 
 globDescription :: Text
 globDescription = """
@@ -36,7 +36,7 @@ globTool :: BuiltinTool
 globTool = BuiltinTool
   { _btTool = makeTool "glob" inputSchema
       & toolDescription ?~ globDescription
-  , _btExecutor = executeGlob
+  , _btExecutor = SimpleExecutor executeGlob
   }
   where
     inputSchema = Aeson.object
