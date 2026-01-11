@@ -4,7 +4,7 @@ module Telos.Agent.Config
   ( AgentConfig
   , makeAgentConfig
   , acMaxIterations
-  , acSystemPrompt
+  , acPromptConfig
   , acModel
   , acMCPServers
   , acStreamingEnabled
@@ -17,7 +17,9 @@ module Telos.Agent.Config
   , defaultAgentConfig
   ) where
 
-import           Lens.Micro.TH ( makeLenses )
+import           Lens.Micro.TH        ( makeLenses )
+
+import           Telos.Prompt.Types   ( SystemPromptConfig )
 
 data MCPServerConfig
   = MCPServerConfig { _mscName    :: Text
@@ -34,10 +36,10 @@ makeMCPServerConfig name cmd args
   = MCPServerConfig { _mscName = name, _mscCommand = cmd, _mscArgs = args, _mscEnv = [] }
 
 data AgentConfig
-  = AgentConfig { _acMaxIterations :: Int
-                , _acSystemPrompt :: Maybe Text
-                , _acModel :: Text
-                , _acMCPServers :: [ MCPServerConfig ]
+  = AgentConfig { _acMaxIterations    :: Int
+                , _acPromptConfig     :: Maybe SystemPromptConfig
+                , _acModel            :: Text
+                , _acMCPServers       :: [ MCPServerConfig ]
                 , _acStreamingEnabled :: Bool
                 }
   deriving stock ( Eq, Show, Generic )
@@ -46,18 +48,18 @@ makeLenses ''AgentConfig
 
 makeAgentConfig :: Text -> AgentConfig
 makeAgentConfig model
-  = AgentConfig { _acMaxIterations = 20
-                , _acSystemPrompt = Nothing
-                , _acModel = model
-                , _acMCPServers = []
+  = AgentConfig { _acMaxIterations    = 20
+                , _acPromptConfig     = Nothing
+                , _acModel            = model
+                , _acMCPServers       = []
                 , _acStreamingEnabled = True
                 }
 
 defaultAgentConfig :: AgentConfig
 defaultAgentConfig
-  = AgentConfig { _acMaxIterations = 20
-                , _acSystemPrompt = Nothing
-                , _acModel = "gpt-4"
-                , _acMCPServers = []
+  = AgentConfig { _acMaxIterations    = 20
+                , _acPromptConfig     = Nothing
+                , _acModel            = "gpt-4"
+                , _acMCPServers       = []
                 , _acStreamingEnabled = True
                 }

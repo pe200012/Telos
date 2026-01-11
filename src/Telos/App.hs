@@ -6,6 +6,7 @@
 module Telos.App ( AppConfig(..), runApp, runAgentOnce, runAgentOnceStreaming ) where
 
 import           Control.Exception            ( bracket )
+import           Control.Concurrent.STM       ( readTVarIO )
 
 import qualified Data.Text                    as T
 import qualified Data.Text.IO                 as TIO
@@ -78,7 +79,8 @@ runApp config = do
 
 initializeTools :: AgentContext -> ServerManager -> IO ()
 initializeTools ctx manager = do
-  let servers = ctx ^. ctxConfig . acMCPServers
+  config <- readTVarIO (ctx ^. ctxConfig)
+  let servers = config ^. acMCPServers
   forM_ servers $ \serverCfg -> do
     let name = serverCfg ^. mscName
         envPairs = serverCfg ^. mscEnv
@@ -111,7 +113,8 @@ repl ctx client manager = do
   unless (T.null input || input == "exit" || input == "quit") $ do
     clearInterrupt ctx
     -- Use streaming if enabled in config
-    let streamingEnabled = ctx ^. ctxConfig . acStreamingEnabled
+    config <- readTVarIO (ctx ^. ctxConfig)
+    let streamingEnabled = config ^. acStreamingEnabled
     result <- if streamingEnabled
       then runAgentOnceStreaming ctx client manager input
       else runAgentOnce ctx client manager input

@@ -20,15 +20,18 @@ module Telos.CLI.Repl
 import           Control.Exception           ( IOException, catch )
 import qualified Data.Text                   as T
 import qualified Data.Text.IO                as TIO
-import           Data.Time                   ( defaultTimeLocale, formatTime )
+import           Data.Time                   ( defaultTimeLocale, formatTime, getCurrentTime )
 
 import           Lens.Micro                  ( (.~), (^.) )
 
+import           System.Directory            ( doesDirectoryExist, getCurrentDirectory )
 import           System.IO                   ( hFlush, stdout )
+import           System.Info                 ( os )
 
-import           Telos.Agent.Config          ( acMaxIterations, acSystemPrompt, makeAgentConfig )
+import           Telos.Agent.Config          ( acMaxIterations, acPromptConfig, makeAgentConfig )
 import           Telos.Agent.Context         ( AgentContext
                                              , clearHistory
+                                             , ctxConfig
                                              , getHistory
                                              , newAgentContext
                                              , registerTools
@@ -39,7 +42,6 @@ import           Telos.CLI.Config            ( CliConfig
                                              , ccMaxIterations
                                              , ccMcpServers
                                              , ccModel
-                                             , ccSystemPrompt
                                              )
 import           Telos.MCP.ServerManager     ( ServerManager
                                              , ServerStatus(..)
@@ -62,6 +64,7 @@ import           Telos.Storage.Types         ( SessionId(..)
                                              , siUpdatedAt
                                              )
 import           Telos.Tool.Registry         ( builtinToolList )
+import           Telos.Prompt.Types          ( makeSystemPromptConfig )
 
 -- | REPL state
 data ReplState
@@ -79,11 +82,10 @@ newReplState config auth = do
   serverMgr <- newServerManager
   mapM_ (registerServer serverMgr) (config ^. ccMcpServers)
 
-  -- Create agent config from CLI config
+  -- Create agent config (prompt config will be set in ensureToolsLoaded)
   let agentConfig
         = makeAgentConfig (config ^. ccModel)
         & acMaxIterations .~ (config ^. ccMaxIterations)
-        & acSystemPrompt .~ (config ^. ccSystemPrompt)
 
   -- Create agent context (initially no tools - will be loaded lazily)
   agentCtx <- newAgentContext agentConfig
@@ -201,20 +203,38 @@ runRepl initialState runAgent = do
     handleEOF :: IOException -> IO (Maybe Text)
     handleEOF _ = pure Nothing
 
--- | Ensure tools are loaded from MCP servers
+-- | Ensure tools are loaded from MCP servers and system prompt is configured
 ensureToolsLoaded :: ReplState -> IO ReplState
 ensureToolsLoaded replState = do
   toolsResult <- aggregateTools (rsServerManager replState)
-  case toolsResult of
-    Left err        -> do
-      TIO.putStrLn $ "Warning: Failed to load some tools: " <> T.pack (show err)
-      registerTools (rsAgentContext replState) builtinToolList
-      pure replState
-    Right toolPairs -> do
-      let mcpTools = map fst toolPairs
-          allTools = builtinToolList <> mcpTools
-      registerTools (rsAgentContext replState) allTools
-      pure replState
+  let mcpTools = case toolsResult of
+        Left err -> do
+          -- Log warning but continue with builtin tools only
+          let _ = err  -- suppress unused warning
+          []
+        Right toolPairs -> map fst toolPairs
+      allTools = builtinToolList <> mcpTools
+
+  -- Register all tools
+  registerTools (rsAgentContext replState) allTools
+
+  -- Build SystemPromptConfig with environment info
+  cwd <- getCurrentDirectory
+  isGit <- doesDirectoryExist (cwd <> "/.git")
+  now <- getCurrentTime
+  let dateStr = T.pack $ formatTime defaultTimeLocale "%Y-%m-%d" now
+      platform = T.pack os
+      modelId = rsConfig replState ^. ccModel
+      promptConfig = makeSystemPromptConfig cwd isGit platform allTools modelId dateStr
+
+  -- Update agent config with prompt config
+  let ctx = rsAgentContext replState
+  atomically $ do
+    let configVar = ctx ^. ctxConfig
+    modifyTVar' configVar (& acPromptConfig ?~ promptConfig)
+
+  TIO.putStrLn $ "Loaded " <> T.pack (show (length allTools)) <> " tools."
+  pure replState
 
 -- | Handle /tools command
 handleToolsCommand :: ReplState -> IO ()

@@ -17,11 +17,13 @@ module Telos.Agent.Loop
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 
+import           Control.Concurrent.STM    ( readTVarIO )
+
 import           Lens.Micro                ( (.~), (^.), _last, non )
 
 import           Polysemy                  ( Embed, Members, Sem, embed )
 
-import           Telos.Agent.Config        ( acMaxIterations, acSystemPrompt )
+import           Telos.Agent.Config        ( acMaxIterations, acPromptConfig )
 import           Telos.Agent.Context       ( AgentContext
                                            , addMessage
                                            , ctxConfig
@@ -46,9 +48,10 @@ import           Telos.Effect.MCP          ( ContentItem(..)
                                            , trContent
                                            , trIsError
                                            )
-import           Telos.Effect.StreamOutput ( StreamOutput, flushOutput, outputNewline )
-import qualified Telos.MCP.Types           as MCP
-import           Telos.Tool.Registry       ( executeBuiltinTool )
+import           Telos.Effect.StreamOutput  ( StreamOutput, flushOutput, outputNewline )
+import qualified Telos.MCP.Types            as MCP
+import           Telos.Prompt.Builder       ( buildSystemPrompt )
+import           Telos.Tool.Registry        ( executeBuiltinTool )
 import qualified Telos.Tool.Types          as ToolTypes
 
 data AgentResult
@@ -82,7 +85,8 @@ runAgentLoop ctx userInput = do
           pure $ AgentInterrupted partialResponse
         else do
           iteration <- embed $ getIterationCount c
-          let maxIter = c ^. ctxConfig . acMaxIterations
+          cfg <- embed $ readTVarIO (c ^. ctxConfig)
+          let maxIter = cfg ^. acMaxIterations
           if iteration >= maxIter
             then do
               logWarn $ "Max iterations reached: " <> T.pack (show maxIter)
@@ -121,7 +125,8 @@ runAgentLoopStreaming ctx userInput = do
           pure $ AgentInterrupted partialResponse
         else do
           iteration <- embed $ getIterationCount c
-          let maxIter = c ^. ctxConfig . acMaxIterations
+          cfg <- embed $ readTVarIO (c ^. ctxConfig)
+          let maxIter = cfg ^. acMaxIterations
           if iteration >= maxIter
             then do
               logWarn $ "Max iterations reached: " <> T.pack (show maxIter)
@@ -142,10 +147,11 @@ agentStep ctx = do
   history <- embed $ getHistory ctx
   tools <- embed $ getTools ctx
 
-  let systemPrompt = ctx ^. ctxConfig . acSystemPrompt
-      messages     = case systemPrompt of
-        Nothing -> history
-        Just sp -> Core.SystemMessage sp : history
+  config <- embed $ readTVarIO (ctx ^. ctxConfig)
+  let mPromptConfig = config ^. acPromptConfig
+      messages = case mPromptConfig of
+        Nothing  -> history
+        Just cfg -> Core.SystemMessage (buildSystemPrompt cfg) : history
 
   logDebug $ "Calling LLM with " <> T.pack (show $ length messages) <> " messages"
 
@@ -171,10 +177,11 @@ agentStepStreaming ctx = do
   history <- embed $ getHistory ctx
   tools <- embed $ getTools ctx
 
-  let systemPrompt = ctx ^. ctxConfig . acSystemPrompt
-      messages     = case systemPrompt of
-        Nothing -> history
-        Just sp -> Core.SystemMessage sp : history
+  config <- embed $ readTVarIO (ctx ^. ctxConfig)
+  let mPromptConfig = config ^. acPromptConfig
+      messages = case mPromptConfig of
+        Nothing  -> history
+        Just cfg -> Core.SystemMessage (buildSystemPrompt cfg) : history
 
   logDebug $ "Calling LLM (streaming) with " <> T.pack (show $ length messages) <> " messages"
 

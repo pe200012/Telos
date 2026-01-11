@@ -32,7 +32,7 @@ data AgentContext
                  , _ctxTools       :: TVar [ Tool ]
                  , _ctxInterrupt   :: MVar ()
                  , _ctxIteration   :: TVar Int
-                 , _ctxConfig      :: AgentConfig
+                 , _ctxConfig      :: TVar AgentConfig
                  , _ctxToolContext :: ToolContext
                  }
 
@@ -44,13 +44,14 @@ newAgentContext cfg = do
   tools <- newTVarIO []
   interrupt <- newEmptyMVar
   iteration <- newTVarIO 0
+  configVar <- newTVarIO cfg
   toolCtx <- newToolContext
   pure
     AgentContext { _ctxHistory     = history
                  , _ctxTools       = tools
                  , _ctxInterrupt   = interrupt
                  , _ctxIteration   = iteration
-                 , _ctxConfig      = cfg
+                 , _ctxConfig      = configVar
                  , _ctxToolContext = toolCtx
                  }
 
