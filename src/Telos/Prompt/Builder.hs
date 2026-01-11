@@ -6,24 +6,34 @@ module Telos.Prompt.Builder
   , toolsSection
   , environmentSection
   , assembleSections
+  , agentsRulesSection
   ) where
 
-import qualified Data.Text        as T
+import qualified Data.Text            as T
 
-import           Lens.Micro       ( (^.) )
+import           Lens.Micro           ( (^.), non )
 
-import           Telos.Core.Types ( Tool, toolDescription, toolName )
+import           Telos.Core.Types     ( Tool, toolDescription )
+import           Telos.Prompt.Discovery ( discoverAgentsRules )
 import           Telos.Prompt.Types
 
 -- | Build complete system prompt from config
-buildSystemPrompt :: SystemPromptConfig -> Text
-buildSystemPrompt cfg = assembleSections sections
+-- This is IO because it discovers AGENTS.md files from filesystem
+buildSystemPrompt :: SystemPromptConfig -> IO Text
+buildSystemPrompt cfg = do
+  agentsRules <- discoverAgentsRules (cfg ^. spcWorkingDir)
+  let baseSections =
+        [ identitySection
+        , toolsSection (cfg ^. spcTools)
+        , environmentSection cfg
+        ]
+  pure $ assembleSections (baseSections <> agentsRules)
+
+-- | Build system prompt without AGENTS.md discovery (for testing)
+agentsRulesSection :: [ PromptSection ] -> PromptSection
+agentsRulesSection sections = makePromptSection "agents-rules" content 100
   where
-    sections =
-      [ identitySection
-      , toolsSection (cfg ^. spcTools)
-      , environmentSection cfg
-      ]
+    content = T.intercalate "\n\n" (map (^. psContent) sections)
 
 -- | Assemble sections into final prompt, sorted by priority
 assembleSections :: [ PromptSection ] -> Text

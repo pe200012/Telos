@@ -15,9 +15,10 @@ import           Polysemy.Error           ( runError )
 
 import           Telos.Agent.Config       ( acMaxIterations
                                           , acModel
-                                          , acSystemPrompt
+                                          , acPromptConfig
                                           , defaultAgentConfig
                                           )
+import           Telos.Prompt.Types       ( simpleSystemPromptConfig )
 import           Telos.Agent.Context      ( newAgentContext, registerTools )
 import           Telos.Agent.Loop         ( AgentResult(..), runAgentLoop )
 import           Telos.CLI.Config         ( makeMcpServerEntry )
@@ -75,8 +76,8 @@ main = do
 
       let agentCfg
             = defaultAgentConfig
-            & acSystemPrompt
-            ?~ "You are a helpful assistant with access to filesystem tools. Be concise."
+            & acPromptConfig
+            ?~ simpleSystemPromptConfig "You are a helpful assistant with access to filesystem tools. Be concise."
             & acModel .~ "gpt-4o"
             & acMaxIterations .~ 5
 

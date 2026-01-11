@@ -22,7 +22,7 @@ import qualified Data.Text                   as T
 import qualified Data.Text.IO                as TIO
 import           Data.Time                   ( defaultTimeLocale, formatTime, getCurrentTime )
 
-import           Lens.Micro                  ( (.~), (^.) )
+import           Lens.Micro                  ( (.~), (^.), (?~) )
 
 import           System.Directory            ( doesDirectoryExist, getCurrentDirectory )
 import           System.IO                   ( hFlush, stdout )

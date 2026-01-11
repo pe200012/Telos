@@ -6,7 +6,6 @@
 module Telos.App ( AppConfig(..), runApp, runAgentOnce, runAgentOnceStreaming ) where
 
 import           Control.Exception            ( bracket )
-import           Control.Concurrent.STM       ( readTVarIO )
 
 import qualified Data.Text                    as T
 import qualified Data.Text.IO                 as TIO

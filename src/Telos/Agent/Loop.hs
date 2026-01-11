@@ -17,8 +17,6 @@ module Telos.Agent.Loop
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 
-import           Control.Concurrent.STM    ( readTVarIO )
-
 import           Lens.Micro                ( (.~), (^.), _last, non )
 
 import           Polysemy                  ( Embed, Members, Sem, embed )
@@ -85,7 +83,7 @@ runAgentLoop ctx userInput = do
           pure $ AgentInterrupted partialResponse
         else do
           iteration <- embed $ getIterationCount c
-          cfg <- embed $ readTVarIO (c ^. ctxConfig)
+          cfg <- embed $ readTVarIO @IO (c ^. ctxConfig)
           let maxIter = cfg ^. acMaxIterations
           if iteration >= maxIter
             then do
@@ -125,7 +123,7 @@ runAgentLoopStreaming ctx userInput = do
           pure $ AgentInterrupted partialResponse
         else do
           iteration <- embed $ getIterationCount c
-          cfg <- embed $ readTVarIO (c ^. ctxConfig)
+          cfg <- embed $ readTVarIO @IO (c ^. ctxConfig)
           let maxIter = cfg ^. acMaxIterations
           if iteration >= maxIter
             then do
@@ -147,11 +145,13 @@ agentStep ctx = do
   history <- embed $ getHistory ctx
   tools <- embed $ getTools ctx
 
-  config <- embed $ readTVarIO (ctx ^. ctxConfig)
+  config <- embed $ readTVarIO @IO (ctx ^. ctxConfig)
   let mPromptConfig = config ^. acPromptConfig
-      messages = case mPromptConfig of
-        Nothing  -> history
-        Just cfg -> Core.SystemMessage (buildSystemPrompt cfg) : history
+  messages <- case mPromptConfig of
+    Nothing  -> pure history
+    Just cfg -> do
+      sysPrompt <- embed $ buildSystemPrompt cfg
+      pure $ Core.SystemMessage sysPrompt : history
 
   logDebug $ "Calling LLM with " <> T.pack (show $ length messages) <> " messages"
 
@@ -177,11 +177,13 @@ agentStepStreaming ctx = do
   history <- embed $ getHistory ctx
   tools <- embed $ getTools ctx
 
-  config <- embed $ readTVarIO (ctx ^. ctxConfig)
+  config <- embed $ readTVarIO @IO (ctx ^. ctxConfig)
   let mPromptConfig = config ^. acPromptConfig
-      messages = case mPromptConfig of
-        Nothing  -> history
-        Just cfg -> Core.SystemMessage (buildSystemPrompt cfg) : history
+  messages <- case mPromptConfig of
+    Nothing  -> pure history
+    Just cfg -> do
+      sysPrompt <- embed $ buildSystemPrompt cfg
+      pure $ Core.SystemMessage sysPrompt : history
 
   logDebug $ "Calling LLM (streaming) with " <> T.pack (show $ length messages) <> " messages"
 

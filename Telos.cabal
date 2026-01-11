@@ -53,6 +53,9 @@ library
       Telos.MCP.ServerManager
       Telos.MCP.Transport.StdIO
       Telos.MCP.Types
+      Telos.Prompt.Builder
+      Telos.Prompt.Discovery
+      Telos.Prompt.Types
       Telos.Storage.Path
       Telos.Storage.Session
       Telos.Storage.Types
