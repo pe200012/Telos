@@ -74,6 +74,9 @@ dependencies:
   # UUID generation
   - uuid
   - random
+  # Cryptographic hashing
+  - cryptohash-sha256
+  - base16-bytestring
 
 default-extensions:
   - BangPatterns
@@ -164,3 +167,4 @@ tests:
       - QuickCheck
       - quickcheck-instances
       - aeson
+      - temporary

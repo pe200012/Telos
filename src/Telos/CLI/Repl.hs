@@ -15,6 +15,9 @@ module Telos.CLI.Repl
   , rsConfig
   , rsServerManager
   , rsAuth
+  , rsUndoStack
+  , rsRedoStack
+  , rsSnapshotConfig
   ) where
 
 import           Control.Exception       ( IOException, catch )
@@ -41,8 +44,13 @@ import           Telos.Agent.Context     ( AgentContext
                                          , setHistory
                                          )
 import           Telos.Agent.Loop        ( AgentResult(..) )
-import           Telos.CLI.Config        ( CliConfig, ccMaxIterations, ccMcpServers, ccModel )
-import           Telos.Core.Types        ( toolDescription, toolName )
+import           Telos.CLI.Config        ( CliConfig
+                                         , ccMaxIterations
+                                         , ccMcpServers
+                                         , ccModel
+                                         , ccSnapshotEnabled
+                                         )
+import           Telos.Core.Types        ( Message, toolDescription, toolName )
 import           Telos.LLM.Copilot.Auth  ( CopilotAuth )
 import           Telos.MCP.ServerManager ( ServerManager
                                          , ServerStatus(..)
@@ -53,6 +61,12 @@ import           Telos.MCP.ServerManager ( ServerManager
                                          , shutdownAll
                                          )
 import           Telos.Prompt.Types      ( makeSystemPromptConfig )
+import           Telos.Snapshot          ( SnapshotConfig
+                                         , initSnapshotConfig
+                                         , restoreFiles
+                                         , scEnabled
+                                         , takeSnapshot
+                                         )
 import           Telos.Storage.Session   ( createSession
                                          , listSessions
                                          , loadContextMessages
@@ -61,6 +75,13 @@ import           Telos.Storage.Session   ( createSession
 import           Telos.Storage.Types     ( SessionId(..), siId, siTitle, siUpdatedAt )
 import           Telos.Tool.Registry     ( builtinToolList )
 
+-- | Undo entry: snapshot hash and messages to restore
+data UndoEntry = UndoEntry
+  { ueSnapshot      :: Maybe Text      -- ^ Git tree hash before this turn
+  , ueMessages      :: [Message]       -- ^ Messages added in this turn (user + assistant)
+  , ueModifiedFiles :: [FilePath]      -- ^ Files modified in this turn (for targeted restore)
+  } deriving stock ( Eq, Show )
+
 -- | REPL state
 data ReplState
   = ReplState { rsConfig        :: CliConfig
@@ -68,6 +89,9 @@ data ReplState
               , rsAgentContext  :: AgentContext
               , rsAuth          :: CopilotAuth
               , rsSessionId     :: Maybe SessionId
+              , rsUndoStack     :: [UndoEntry]    -- Stack of undo entries
+              , rsRedoStack     :: [UndoEntry]    -- Stack of redo entries
+              , rsSnapshotConfig :: SnapshotConfig -- Snapshot configuration
               }
 
 -- | Create new REPL state
@@ -84,12 +108,19 @@ newReplState config auth = do
   -- Create agent context (initially no tools - will be loaded lazily)
   agentCtx <- newAgentContext agentConfig
 
+  -- Initialize snapshot system
+  cwd <- getCurrentDirectory
+  snapConfig <- initSnapshotConfig (config ^. ccSnapshotEnabled) cwd
+
   pure
     $ ReplState { rsConfig        = config
                 , rsServerManager = serverMgr
                 , rsAgentContext  = agentCtx
                 , rsAuth          = auth
                 , rsSessionId     = Nothing
+                , rsUndoStack     = []
+                , rsRedoStack     = []
+                , rsSnapshotConfig = snapConfig
                 }
 
 -- | REPL commands
@@ -103,6 +134,8 @@ data ReplCommand
   | CmdLoad Text
   | CmdSave (Maybe Text)
   | CmdNew
+  | CmdUndo Int
+  | CmdRedo Int
   | CmdMessage Text
   deriving stock ( Eq, Show )
 
@@ -125,9 +158,13 @@ parseCommand input
              then Nothing
              else Just arg)
   | cmd == "/new" = CmdNew
+  | "/undo" `T.isPrefixOf` cmd = CmdUndo (parseCount $ T.drop 5 input)
+  | "/redo" `T.isPrefixOf` cmd = CmdRedo (parseCount $ T.drop 5 input)
   | otherwise = CmdMessage input
   where
     cmd = T.toLower $ T.strip input
+    parseCount :: Text -> Int
+    parseCount t = fromMaybe 1 $ readMaybe $ toString $ T.strip t
 
 -- | Run the REPL loop
 runRepl :: ReplState -> (ReplState -> Text -> IO AgentResult) -> IO ()
@@ -184,14 +221,38 @@ runRepl initialState runAgent = do
         replState' <- handleNewCommand replState
         loop replState'
 
+      CmdUndo n      -> do
+        replState' <- handleUndoCommand replState n
+        loop replState'
+
+      CmdRedo n      -> do
+        replState' <- handleRedoCommand replState n
+        loop replState'
+
       CmdMessage ""  -> loop replState
 
       CmdMessage msg -> do
         replState' <- ensureToolsLoaded replState
+        let snapConfig = rsSnapshotConfig replState'
+        -- Take snapshot before this turn (using isolated snapshot repo)
+        snapshot <- takeSnapshot snapConfig
+        historyBefore <- getHistory (rsAgentContext replState')
         result <- runAgent replState' msg
         handleAgentResult result
-        replState'' <- autoSave replState'
-        loop replState''
+        -- Calculate messages added in this turn
+        historyAfter <- getHistory (rsAgentContext replState')
+        let newMsgs = drop (length historyBefore) historyAfter
+            -- TODO: Track actual modified files from tool calls
+            undoEntry = UndoEntry { ueSnapshot = snapshot
+                                  , ueMessages = newMsgs
+                                  , ueModifiedFiles = []
+                                  }
+        -- Push to undo stack, clear redo stack (new action invalidates redo)
+        let replState'' = replState' { rsUndoStack = undoEntry : rsUndoStack replState'
+                                     , rsRedoStack = []
+                                     }
+        replState''' <- autoSave replState''
+        loop replState'''
 
     tryGetLine :: IO (Maybe Text)
     tryGetLine = (Just <$> TIO.getLine) `catch` handleEOF
@@ -227,7 +288,7 @@ ensureToolsLoaded replState = do
   let ctx = rsAgentContext replState
   atomically $ do
     let configVar = ctx ^. ctxConfig
-    modifyTVar' configVar (& acPromptConfig ?~ promptConfig)
+    modifyTVar' configVar (acPromptConfig ?~ promptConfig)
 
   TIO.putStrLn $ "Loaded " <> T.pack (show (length allTools)) <> " tools."
   pure replState
@@ -341,16 +402,92 @@ handleNewCommand replState = do
 
   clearHistory (rsAgentContext replState)
   TIO.putStrLn "Started new session."
-  pure replState { rsSessionId = Nothing }
+  pure replState { rsSessionId = Nothing, rsUndoStack = [], rsRedoStack = [] }
+
+-- | Handle /undo command
+handleUndoCommand :: ReplState -> Int -> IO ReplState
+handleUndoCommand replState n = do
+  let undoStack = rsUndoStack replState
+      toUndo = take n undoStack
+      remaining = drop n undoStack
+
+  if null toUndo
+    then do
+      TIO.putStrLn "Nothing to undo."
+      pure replState
+    else do
+      let snapConfig = rsSnapshotConfig replState
+
+      -- Remove messages from history
+      history <- getHistory (rsAgentContext replState)
+      let msgsToRemove = concatMap ueMessages toUndo
+          newHistory = take (length history - length msgsToRemove) history
+      setHistory (rsAgentContext replState) newHistory
+
+      -- Restore files from oldest snapshot in the undo batch
+      when (snapConfig ^. scEnabled) $ do
+        -- Get the oldest snapshot (the state we want to restore to)
+        let mOldestSnapshot = viaNonEmpty last toUndo >>= ueSnapshot
+            -- Collect all modified files from undone turns
+            modifiedFiles = concatMap ueModifiedFiles toUndo
+        case mOldestSnapshot of
+          Just treeHash -> do
+            result <- if null modifiedFiles
+              then restoreFiles snapConfig treeHash ["."]  -- Restore all if no tracking
+              else restoreFiles snapConfig treeHash modifiedFiles
+            case result of
+              Left err -> TIO.putStrLn $ "Warning: Could not restore files: " <> err
+              Right () -> pure ()
+          Nothing -> pure ()
+
+      TIO.putStrLn $ "Undone " <> T.pack (show $ length toUndo) <> " turn(s)."
+
+      -- Move undone entries to redo stack
+      pure replState { rsUndoStack = remaining
+                     , rsRedoStack = toUndo <> rsRedoStack replState
+                     }
+
+-- | Handle /redo command
+handleRedoCommand :: ReplState -> Int -> IO ReplState
+handleRedoCommand replState n = do
+  let redoStack = rsRedoStack replState
+      toRedo = take n redoStack
+      remaining = drop n redoStack
+
+  if null toRedo
+    then do
+      TIO.putStrLn "Nothing to redo."
+      pure replState
+    else do
+      -- Add messages back to history
+      history <- getHistory (rsAgentContext replState)
+      let msgsToAdd = concatMap ueMessages (reverse toRedo)
+          newHistory = history <> msgsToAdd
+      setHistory (rsAgentContext replState) newHistory
+
+      TIO.putStrLn $ "Redone " <> T.pack (show $ length toRedo) <> " turn(s)."
+
+      -- Move redone entries back to undo stack
+      pure replState { rsRedoStack = remaining
+                     , rsUndoStack = toRedo <> rsUndoStack replState
+                     }
 
 autoSave :: ReplState -> IO ReplState
 autoSave replState = do
-  case rsSessionId replState of
-    Just sid -> do
-      history <- getHistory (rsAgentContext replState)
-      saveContextMessages sid history
-      pure replState
-    Nothing  -> pure replState
+  history <- getHistory (rsAgentContext replState)
+  -- Only save if there's actual history
+  if null history
+    then pure replState
+    else case rsSessionId replState of
+      Just sid -> do
+        saveContextMessages sid history
+        pure replState
+      Nothing  -> do
+        -- Auto-create session on first message
+        info <- createSession Nothing
+        let sid = info ^. siId
+        saveContextMessages sid history
+        pure replState { rsSessionId = Just sid }
 
 -- | Handle agent result
 handleAgentResult :: AgentResult -> IO ()
@@ -379,6 +516,8 @@ printHelp = do
   TIO.putStrLn "Commands:"
   TIO.putStrLn "  /quit, /q      Exit Telos"
   TIO.putStrLn "  /clear         Clear conversation history"
+  TIO.putStrLn "  /undo [n]      Undo last n turns (default: 1)"
+  TIO.putStrLn "  /redo [n]      Redo last n undone turns (default: 1)"
   TIO.putStrLn "  /tools         List available tools"
   TIO.putStrLn "  /servers       Show MCP server status"
   TIO.putStrLn "  /sessions      List saved sessions"

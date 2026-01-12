@@ -8,6 +8,7 @@ module Telos.CLI.Config
   , ccSystemPrompt
   , ccMcpServers
   , ccStreamingEnabled
+  , ccSnapshotEnabled
   , McpServerEntry
   , makeMcpServerEntry
   , mseName
@@ -72,6 +73,7 @@ data CliConfig
               , _ccSystemPrompt :: Maybe Text
               , _ccMcpServers :: [ McpServerEntry ]
               , _ccStreamingEnabled :: Bool
+              , _ccSnapshotEnabled :: Bool
               }
   deriving stock ( Eq, Show, Generic )
 
@@ -84,6 +86,7 @@ makeCliConfig model
               , _ccSystemPrompt = Nothing
               , _ccMcpServers = []
               , _ccStreamingEnabled = True
+              , _ccSnapshotEnabled = True
               }
 
 defaultCliConfig :: CliConfig
@@ -93,6 +96,7 @@ defaultCliConfig
               , _ccSystemPrompt = Just "You are a helpful assistant with access to tools."
               , _ccMcpServers = []
               , _ccStreamingEnabled = True
+              , _ccSnapshotEnabled = True
               }
 
 instance FromJSON CliConfig where
@@ -101,6 +105,7 @@ instance FromJSON CliConfig where
     <*> o .:? "systemPrompt"
     <*> o .:? "mcpServers" .!= []
     <*> o .:? "streamingEnabled" .!= True
+    <*> o .:? "snapshotEnabled" .!= True
 
 instance ToJSON CliConfig where
   toJSON cfg
@@ -110,6 +115,7 @@ instance ToJSON CliConfig where
       , "systemPrompt" .= (cfg ^. ccSystemPrompt)
       , "mcpServers" .= (cfg ^. ccMcpServers)
       , "streamingEnabled" .= (cfg ^. ccStreamingEnabled)
+      , "snapshotEnabled" .= (cfg ^. ccSnapshotEnabled)
       ]
 
 -- | Get the config file path (~/.config/telos/config.json)
