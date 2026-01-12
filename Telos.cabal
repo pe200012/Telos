@@ -52,6 +52,7 @@ library
       Telos.LLM.Copilot.Client
       Telos.LLM.Copilot.Interpreter
       Telos.LLM.Interpreter
+      Telos.LLM.ModelLimits
       Telos.LLM.Streaming
       Telos.MCP.Client
       Telos.MCP.Interpreter

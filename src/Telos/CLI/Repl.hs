@@ -34,11 +34,12 @@ import           System.Directory        ( doesDirectoryExist, getCurrentDirecto
 import           System.IO               ( hFlush, stdout )
 import           System.Info             ( os )
 
-import           Telos.Agent.Config      ( acMaxIterations, acPromptConfig, makeAgentConfig )
+import           Telos.Agent.Config      ( acMaxIterations, acPruneConfig, acPromptConfig, makeAgentConfig )
 import           Telos.Agent.Context     ( AgentContext
                                          , clearHistory
                                          , ctxConfig
                                          , getHistory
+                                         , getPruneState
                                          , newAgentContext
                                          , registerTools
                                          , setHistory
@@ -50,7 +51,10 @@ import           Telos.CLI.Config        ( CliConfig
                                          , ccModel
                                          , ccSnapshotEnabled
                                          )
+import           Telos.Context.Transform ( estimateContextTokens )
+import           Telos.Context.Types     ( pcEnabled )
 import           Telos.Core.Types        ( Message, toolDescription, toolName )
+import           Telos.LLM.ModelLimits   ( getContextLength )
 import           Telos.LLM.Copilot.Auth  ( CopilotAuth )
 import           Telos.MCP.ServerManager ( ServerManager
                                          , ServerStatus(..)
@@ -136,6 +140,7 @@ data ReplCommand
   | CmdNew
   | CmdUndo Int
   | CmdRedo Int
+  | CmdModel (Maybe Text)
   | CmdMessage Text
   deriving stock ( Eq, Show )
 
@@ -160,6 +165,14 @@ parseCommand input
   | cmd == "/new" = CmdNew
   | "/undo" `T.isPrefixOf` cmd = CmdUndo (parseCount $ T.drop 5 input)
   | "/redo" `T.isPrefixOf` cmd = CmdRedo (parseCount $ T.drop 5 input)
+  | "/model" `T.isPrefixOf` cmd
+    = CmdModel
+      (let
+           arg = T.strip $ T.drop 6 input
+         in 
+           if T.null arg
+             then Nothing
+             else Just arg)
   | otherwise = CmdMessage input
   where
     cmd = T.toLower $ T.strip input
@@ -173,7 +186,8 @@ runRepl initialState runAgent = do
   loop initialState
   where
     loop replState = do
-      TIO.putStr "telos> "
+      prompt <- buildPrompt replState
+      TIO.putStr prompt
       System.IO.hFlush System.IO.stdout
       mInput <- tryGetLine
       case mInput of
@@ -182,6 +196,24 @@ runRepl initialState runAgent = do
           TIO.putStrLn "Goodbye!"
           shutdownAll (rsServerManager replState)
         Just input -> handleInput replState input
+
+    -- Build prompt with context indicator
+    buildPrompt :: ReplState -> IO Text
+    buildPrompt replState = do
+      let ctx = rsAgentContext replState
+          cliConfig = rsConfig replState
+      history <- getHistory ctx
+      pruneState <- getPruneState ctx
+      config <- readTVarIO (ctx ^. ctxConfig)
+      let pruneConfig = config ^. acPruneConfig
+          modelName = cliConfig ^. ccModel
+          maxContext = getContextLength modelName
+          (rawTokens, effectiveTokens) = estimateContextTokens pruneState history
+          -- Show: current/max or effective/max when DCP active
+          tokenStr = if pruneConfig ^. pcEnabled && rawTokens /= effectiveTokens
+            then formatTokenCount effectiveTokens <> "/" <> formatTokenCount maxContext
+            else formatTokenCount rawTokens <> "/" <> formatTokenCount maxContext
+      pure $ "telos [" <> tokenStr <> "]> "
 
     handleInput replState input = case parseCommand input of
       CmdQuit        -> do
@@ -227,6 +259,10 @@ runRepl initialState runAgent = do
 
       CmdRedo n      -> do
         replState' <- handleRedoCommand replState n
+        loop replState'
+
+      CmdModel mName -> do
+        replState' <- handleModelCommand replState mName
         loop replState'
 
       CmdMessage ""  -> loop replState
@@ -472,6 +508,34 @@ handleRedoCommand replState n = do
                      , rsUndoStack = toRedo <> rsUndoStack replState
                      }
 
+-- | Handle /model command - list or change model
+handleModelCommand :: ReplState -> Maybe Text -> IO ReplState
+handleModelCommand replState mName = case mName of
+  Nothing -> do
+    -- List current model and available models
+    let currentModel = rsConfig replState ^. ccModel
+    TIO.putStrLn $ "Current model: " <> currentModel
+    TIO.putStrLn ""
+    TIO.putStrLn "To change model: /model <model-name>"
+    TIO.putStrLn "Example: /model gpt-4o"
+    TIO.putStrLn "         /model claude-sonnet-4"
+    pure replState
+
+  Just newModel -> do
+    -- Change the model
+    let currentModel = rsConfig replState ^. ccModel
+    if newModel == currentModel
+      then do
+        TIO.putStrLn $ "Already using model: " <> currentModel
+        pure replState
+      else do
+        let newConfig = rsConfig replState & ccModel .~ newModel
+            replState' = replState { rsConfig = newConfig }
+        TIO.putStrLn $ "Model changed: " <> currentModel <> " -> " <> newModel
+        let contextLimit = getContextLength newModel
+        TIO.putStrLn $ "Context limit: " <> formatTokenCount contextLimit
+        pure replState'
+
 autoSave :: ReplState -> IO ReplState
 autoSave replState = do
   history <- getHistory (rsAgentContext replState)
@@ -518,6 +582,7 @@ printHelp = do
   TIO.putStrLn "  /clear         Clear conversation history"
   TIO.putStrLn "  /undo [n]      Undo last n turns (default: 1)"
   TIO.putStrLn "  /redo [n]      Redo last n undone turns (default: 1)"
+  TIO.putStrLn "  /model [name]  Show current model or change to <name>"
   TIO.putStrLn "  /tools         List available tools"
   TIO.putStrLn "  /servers       Show MCP server status"
   TIO.putStrLn "  /sessions      List saved sessions"
@@ -528,4 +593,11 @@ printHelp = do
   TIO.putStrLn ""
   TIO.putStrLn "Configuration: ~/.config/telos/config.json"
   TIO.putStrLn "Sessions: ~/.local/share/telos/sessions/"
+
+-- | Format token count with k/M suffixes
+formatTokenCount :: Int -> Text
+formatTokenCount n
+  | n >= 1000000 = T.pack $ show (n `div` 1000000) <> "." <> show ((n `mod` 1000000) `div` 100000) <> "M"
+  | n >= 1000    = T.pack $ show (n `div` 1000) <> "." <> show ((n `mod` 1000) `div` 100) <> "k"
+  | otherwise    = T.pack $ show n
 

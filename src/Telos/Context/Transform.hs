@@ -12,6 +12,10 @@ module Telos.Context.Transform
     -- * Tool Cache Building
   , buildToolCache
   , updateToolCache
+    -- * Token Estimation
+  , estimateTokens
+  , estimateMessageTokens
+  , estimateContextTokens
     -- * Placeholders
   , outputRemovedPlaceholder
   , contentRemovedPlaceholder
@@ -27,7 +31,12 @@ import           Lens.Micro          ( (%~), (^.) )
 import           Relude
 
 import           Telos.Context.Types
-import           Telos.Core.Types    ( Message(..) )
+import           Telos.Core.Types    ( Message(..)
+                                     , amContent
+                                     , amToolCalls
+                                     , tcArguments
+                                     , tcName
+                                     )
 
 -- | Placeholder text for removed output
 outputRemovedPlaceholder :: Text
@@ -156,3 +165,33 @@ updateToolCache pstate toolName paramKey isErr mFilePath result =
 -- | Rough token estimation (4 chars per token average)
 estimateTokens :: Text -> Int
 estimateTokens t = T.length t `div` 4
+
+-- | Estimate tokens for a single message
+estimateMessageTokens :: Message -> Int
+estimateMessageTokens msg = case msg of
+  SystemMessage content         -> estimateTokens content + 4  -- role overhead
+  UserMessage content           -> estimateTokens content + 4
+  AssistantMsg am               -> maybe 0 estimateTokens (am ^. amContent) + 4
+    + sum [ estimateTokens (tc ^. tcName) + estimateTokens (encodeArgs $ tc ^. tcArguments)
+          | tc <- am ^. amToolCalls
+          ]
+  ToolResultMessage _ name res _ -> estimateTokens name + estimateTokens res + 4
+  where
+    encodeArgs v = decodeUtf8 $ toStrict $ Aeson.encode v
+
+-- | Estimate total context tokens, accounting for DCP pruning
+-- Returns (rawTokens, effectiveTokens) where effectiveTokens considers pruned content
+estimateContextTokens :: PruneState -> [Message] -> (Int, Int)
+estimateContextTokens pstate msgs =
+  let rawTokens = sum $ map estimateMessageTokens msgs
+      -- Calculate tokens saved by pruning
+      prunedTokens = sum [ entry ^. tceTokenEstimate
+                        | (rid, entry) <- Map.toList (pstate ^. psToolCache)
+                        , Set.member rid (pstate ^. psMarkedIds)
+                        ]
+      -- Add back distillation tokens
+      distillationTokens = sum [ estimateTokens t
+                               | t <- Map.elems (pstate ^. psDistillations)
+                               ]
+      effectiveTokens = rawTokens - prunedTokens + distillationTokens
+  in (rawTokens, max 0 effectiveTokens)
