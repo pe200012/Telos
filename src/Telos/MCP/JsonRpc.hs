@@ -33,8 +33,8 @@ import           Data.Aeson
 import           Data.Aeson.Types     ( Parser )
 import qualified Data.ByteString.Lazy as BL
 
-import           Lens.Micro           ( (^.) )
-import           Lens.Micro.TH        ( makeLenses )
+import           Control.Lens           ( (^.) )
+import           Control.Lens        ( makeLenses )
 
 import           Relude
 

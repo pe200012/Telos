@@ -18,7 +18,7 @@ module Telos.Agent.Config
   , defaultAgentConfig
   ) where
 
-import           Lens.Micro.TH        ( makeLenses )
+import           Control.Lens        ( makeLenses )
 
 import           Relude
 
@@ -53,7 +53,7 @@ makeLenses ''AgentConfig
 
 makeAgentConfig :: Text -> AgentConfig
 makeAgentConfig model
-  = AgentConfig { _acMaxIterations    = 20
+  = AgentConfig { _acMaxIterations    = 100
                 , _acPromptConfig     = Nothing
                 , _acModel            = model
                 , _acMCPServers       = []
@@ -63,7 +63,7 @@ makeAgentConfig model
 
 defaultAgentConfig :: AgentConfig
 defaultAgentConfig
-  = AgentConfig { _acMaxIterations    = 20
+  = AgentConfig { _acMaxIterations    = 100
                 , _acPromptConfig     = Nothing
                 , _acModel            = "gpt-4"
                 , _acMCPServers       = []

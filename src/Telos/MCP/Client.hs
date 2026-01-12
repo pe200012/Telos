@@ -34,8 +34,8 @@ import qualified Data.ByteString.Lazy      as BL
 import qualified Data.Map.Strict           as Map
 import qualified Data.Text                 as T
 
-import           Lens.Micro                ( (.~), (?~), (^.) )
-import           Lens.Micro.TH             ( makeLenses )
+import           Control.Lens                ( (.~), (?~), (^.) )
+import           Control.Lens             ( makeLenses )
 
 import           Relude
 

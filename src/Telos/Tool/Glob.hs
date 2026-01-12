@@ -9,7 +9,7 @@ import qualified Data.Aeson           as Aeson
 import           Data.Aeson           ( (.:), (.:?) )
 import           Data.Aeson.Types     ( parseEither )
 import qualified Data.Text            as T
-import           Lens.Micro           ( (?~) )
+import           Control.Lens           ( (?~) )
 import           System.Directory     ( doesDirectoryExist )
 import           System.FilePath.Glob ( compile, globDir1 )
 

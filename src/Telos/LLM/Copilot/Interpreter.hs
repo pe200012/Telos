@@ -15,8 +15,8 @@ import           Conduit
 
 import qualified Data.Text                as T
 
-import           Lens.Micro               ( (.~), (^.) )
-import           Lens.Micro.TH            ( makeLenses )
+import           Control.Lens               ( (.~), (^.) )
+import           Control.Lens            ( makeLenses )
 
 import           Network.HTTP.Client      ( Manager )
 

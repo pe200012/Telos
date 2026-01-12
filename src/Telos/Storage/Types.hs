@@ -22,7 +22,7 @@ import           Data.Aeson        ( FromJSON, ToJSON )
 import           Data.Time         ( UTCTime, getCurrentTime )
 import qualified Data.UUID         as UUID
 import           Data.UUID.V4      ( nextRandom )
-import           Lens.Micro.TH     ( makeLenses )
+import           Control.Lens     ( makeLenses )
 
 import           Telos.Core.Types  ( Message )
 

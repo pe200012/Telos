@@ -8,7 +8,7 @@ module Telos.LLM.Interpreter ( runLLMWithCopilot ) where
 
 import           Conduit                  ( (.|), ConduitT, awaitForever, yield )
 
-import           Lens.Micro               ( (.~), (^.) )
+import           Control.Lens               ( (.~), (^.) )
 
 import           Polysemy                 ( Embed, InterpreterFor, Member, embed, interpret )
 

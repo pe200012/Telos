@@ -95,8 +95,8 @@ module Telos.MCP.Types
 import           Data.Aeson
 import           Data.Aeson.Types ( Parser )
 
-import           Lens.Micro       ( (^.) )
-import           Lens.Micro.TH    ( makeLenses )
+import           Control.Lens       ( (^.) )
+import           Control.Lens    ( makeLenses )
 
 import           Relude
 

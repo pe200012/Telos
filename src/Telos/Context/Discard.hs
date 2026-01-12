@@ -9,7 +9,7 @@ import           Data.Aeson.Types   ( parseEither )
 import qualified Data.Set           as Set
 import qualified Data.Text          as T
 
-import           Lens.Micro         ( (?~) )
+import           Control.Lens         ( (?~) )
 
 import           Relude
 

@@ -51,7 +51,7 @@ import           Data.Aeson      ( FromJSON, FromJSONKey, ToJSON, ToJSONKey, Val
 import qualified Data.Map.Strict as Map
 import qualified Data.Set        as Set
 
-import           Lens.Micro.TH   ( makeLenses )
+import           Control.Lens   ( makeLenses )
 
 import           Relude
 

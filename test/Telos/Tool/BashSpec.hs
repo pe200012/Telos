@@ -3,7 +3,7 @@ module Telos.Tool.BashSpec ( spec ) where
 import qualified Data.Aeson       as Aeson
 import qualified Data.Text        as T
 
-import           Lens.Micro       ( (^.) )
+import           Control.Lens       ( (^.) )
 
 import           Relude
 

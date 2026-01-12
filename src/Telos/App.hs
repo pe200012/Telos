@@ -10,7 +10,7 @@ import           Control.Exception            ( bracket )
 import qualified Data.Text                    as T
 import qualified Data.Text.IO                 as TIO
 
-import           Lens.Micro                   ( (.~), (^.) )
+import           Control.Lens                   ( (.~), (^.) )
 
 import           Network.HTTP.Client          ( newManager )
 import           Network.HTTP.Client.TLS      ( tlsManagerSettings )

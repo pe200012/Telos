@@ -15,8 +15,8 @@ module Telos.Agent.Subagent
   , runSubagent
   ) where
 
-import           Lens.Micro       ( (^.), (.~) )
-import           Lens.Micro.TH    ( makeLenses )
+import           Control.Lens       ( (^.), (.~) )
+import           Control.Lens    ( makeLenses )
 
 import           Polysemy         ( Embed, Members, Sem, embed )
 

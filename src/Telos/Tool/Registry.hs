@@ -11,7 +11,7 @@ module Telos.Tool.Registry
 import           Data.Aeson       ( Value )
 import qualified Data.Map.Strict  as Map
 
-import           Lens.Micro       ( (^.) )
+import           Control.Lens       ( (^.) )
 
 import           Relude
 

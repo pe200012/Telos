@@ -2,7 +2,7 @@ module Telos.Agent.InterruptSpec ( spec ) where
 
 import           Control.Concurrent.MVar ( isEmptyMVar )
 
-import           Lens.Micro              ( (^.) )
+import           Control.Lens              ( (^.) )
 
 import           Relude
 

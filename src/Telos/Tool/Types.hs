@@ -28,7 +28,7 @@ import           Data.Aeson       ( Value )
 import qualified Data.Map.Strict  as Map
 import           Data.Time        ( UTCTime, getCurrentTime )
 
-import           Lens.Micro.TH    ( makeLenses )
+import           Control.Lens    ( makeLenses )
 
 import           Relude
 

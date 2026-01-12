@@ -1,6 +1,6 @@
 module Telos.Agent.ConfigSpec ( spec ) where
 
-import           Lens.Micro         ( (.~), (^.) )
+import           Control.Lens         ( (.~), (^.) )
 
 import           Relude
 
@@ -12,8 +12,8 @@ spec :: Spec
 spec = do
   describe "AgentConfig" $ do
     describe "defaultAgentConfig" $ do
-      it "has maxIterations of 20" $ do
-        (defaultAgentConfig ^. acMaxIterations) `shouldBe` 20
+      it "has maxIterations of 100" $ do
+        (defaultAgentConfig ^. acMaxIterations) `shouldBe` 100
 
       it "has no system prompt by default" $ do
         (defaultAgentConfig ^. acPromptConfig) `shouldBe` Nothing

@@ -21,8 +21,8 @@ import           Control.Exception      ( try )
 
 import qualified Data.Map.Strict        as Map
 
-import           Lens.Micro             ( (.~), (^.) )
-import           Lens.Micro.TH          ( makeLenses )
+import           Control.Lens             ( (.~), (^.) )
+import           Control.Lens          ( makeLenses )
 
 import           Relude
 

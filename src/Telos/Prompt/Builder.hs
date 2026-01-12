@@ -14,7 +14,7 @@ import           Relude
 
 import qualified Data.Text            as T
 
-import           Lens.Micro           ( (^.), non )
+import           Control.Lens           ( (^.), non )
 
 import           Telos.Core.Types     ( Tool, toolDescription )
 import           Telos.Prompt.Discovery ( discoverAgentsRules )

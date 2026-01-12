@@ -18,8 +18,8 @@ import           Data.Aeson                ( Value )
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 
-import           Lens.Micro                ( (%~), (.~), (^?), (^.), _last, non )
-import           Lens.Micro.Aeson          ( key, _String, _Integer )
+import           Control.Lens                ( (%~), (.~), (^?), (^.), _last, non )
+import           Data.Aeson.Lens          ( key, _String, _Integer )
 
 import           Polysemy                  ( Embed, Members, Sem, embed )
 

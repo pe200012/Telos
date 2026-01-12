@@ -19,7 +19,7 @@ import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Text                  as T
 import           Data.Time                  ( getCurrentTime )
 
-import           Lens.Micro                 ( (^.), non )
+import           Control.Lens                 ( (^.), non )
 
 import           Relude
 

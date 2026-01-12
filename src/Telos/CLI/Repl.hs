@@ -26,7 +26,7 @@ import qualified Data.Text               as T
 import qualified Data.Text.IO            as TIO
 import           Data.Time               ( defaultTimeLocale, formatTime, getCurrentTime )
 
-import           Lens.Micro              ( (.~), (?~), (^.) )
+import           Control.Lens              ( (.~), (?~), (^.) )
 
 import           Relude
 

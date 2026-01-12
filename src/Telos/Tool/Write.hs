@@ -10,7 +10,7 @@ import           Data.Aeson           ( (.:) )
 import           Data.Aeson.Types     ( parseEither )
 import qualified Data.Text            as T
 import qualified Data.Text.IO         as TIO
-import           Lens.Micro           ( (?~) )
+import           Control.Lens           ( (?~) )
 import           System.Directory     ( createDirectoryIfMissing, doesFileExist, getModificationTime )
 import           System.FilePath      ( takeDirectory )
 

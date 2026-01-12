@@ -8,7 +8,7 @@ import           Data.Aeson         ( (.:) )
 import           Data.Aeson.Types   ( parseEither )
 import qualified Data.Text          as T
 
-import           Lens.Micro         ( (?~) )
+import           Control.Lens         ( (?~) )
 
 import           Relude
 

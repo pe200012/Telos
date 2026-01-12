@@ -24,9 +24,9 @@ import qualified Data.Map.Strict          as Map
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as TE
 
-import           Lens.Micro               ( (^.), non )
-import           Lens.Micro.Pro           ( (?~), at )
-import           Lens.Micro.TH            ( makeLenses )
+import           Control.Lens               ( (^.), non )
+import           Control.Lens           ( (?~), at )
+import           Control.Lens            ( makeLenses )
 
 import           Relude
 

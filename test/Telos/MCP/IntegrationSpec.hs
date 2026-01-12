@@ -2,7 +2,7 @@ module Telos.MCP.IntegrationSpec ( spec ) where
 
 import           Data.Aeson              ( (.=), object )
 
-import           Lens.Micro              ( (^.) )
+import           Control.Lens              ( (^.) )
 
 import           Relude
 

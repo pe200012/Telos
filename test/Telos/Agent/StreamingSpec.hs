@@ -4,7 +4,7 @@ module Telos.Agent.StreamingSpec ( spec ) where
 
 import qualified Data.IntMap.Strict    as IntMap
 
-import           Lens.Micro            ( (^.) )
+import           Control.Lens            ( (^.) )
 
 import           Relude
 

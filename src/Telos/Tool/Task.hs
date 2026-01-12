@@ -6,7 +6,7 @@ module Telos.Tool.Task
   ) where
 
 import           Data.Aeson       ( Value, object, (.=) )
-import           Lens.Micro       ( (?~) )
+import           Control.Lens       ( (?~) )
 
 import           Relude
 

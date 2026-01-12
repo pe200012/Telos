@@ -11,7 +11,7 @@ import           Data.Aeson              ( object )
 
 import qualified Data.Text               as T
 
-import           Lens.Micro              ( (^.) )
+import           Control.Lens              ( (^.) )
 
 import           Polysemy                ( runM )
 
@@ -154,7 +154,7 @@ spec = do
 
       -- Verify parent config unchanged
       parentConfig <- readTVarIO (parentCtx ^. ctxConfig)
-      (parentConfig ^. acMaxIterations) `shouldBe` 20  -- default is 20
+      (parentConfig ^. acMaxIterations) `shouldBe` 100  -- default is 100
 
   describe "depth limiting" $ do
     it "runSubagent returns error when depth exceeded" $ do

@@ -39,8 +39,8 @@ import qualified Data.Text.Encoding        as TE
 import           Data.Time                 ( UTCTime, addUTCTime, diffUTCTime, getCurrentTime )
 import           Data.Time.Clock.POSIX     ( utcTimeToPOSIXSeconds )
 
-import           Lens.Micro                ( (^.) )
-import           Lens.Micro.TH             ( makeLenses )
+import           Control.Lens                ( (^.) )
+import           Control.Lens             ( makeLenses )
 
 import           Network.HTTP.Client
 import           Network.HTTP.Types.Status ( statusCode )

@@ -9,7 +9,7 @@ module Telos.Agent.LoopSpec ( spec ) where
 
 import           Data.Aeson          ( (.=), object )
 
-import           Lens.Micro          ( (.~), (?~), (^.) )
+import           Control.Lens          ( (.~), (?~), (^.) )
 
 import           Polysemy
 import           Polysemy.Error

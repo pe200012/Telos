@@ -14,7 +14,7 @@ module Telos.Effect.Process
   , phStderr
   ) where
 
-import           Lens.Micro.TH    ( makeLenses )
+import           Control.Lens    ( makeLenses )
 
 import           Polysemy         ( makeSem )
 

@@ -2,7 +2,7 @@ module Telos.Tool.ContextSpec ( spec ) where
 
 import           Data.Time        ( getCurrentTime )
 
-import           Lens.Micro       ( (^.) )
+import           Control.Lens       ( (^.) )
 
 import           Relude
 

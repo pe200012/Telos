@@ -25,7 +25,7 @@ module Telos.Effect.MCP
 
 import           Data.Aeson       ( Value )
 
-import           Lens.Micro.TH    ( makeLenses )
+import           Control.Lens    ( makeLenses )
 
 import           Polysemy         ( makeSem )
 

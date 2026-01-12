@@ -22,7 +22,7 @@ import           Data.Aeson                 ( FromJSON, ToJSON, eitherDecode, en
 import qualified Data.ByteString.Lazy       as BL
 import qualified Data.ByteString.Lazy.Char8 as BL8
 
-import           Lens.Micro.TH              ( makeLenses )
+import           Control.Lens              ( makeLenses )
 
 import           Relude
 

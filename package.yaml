@@ -28,6 +28,8 @@ dependencies:
   - bytestring
   # JSON
   - aeson >= 2.0
+  # YAML
+  - yaml >= 0.11
   # Containers
   - containers
   - unordered-containers
@@ -67,10 +69,8 @@ dependencies:
   # Unix (for signal handling)
   - unix
   # Lenses
-  - microlens
-  - microlens-th
-  - microlens-pro
-  - microlens-aeson
+  - lens
+  - lens-aeson
   # UUID generation
   - uuid
   - random

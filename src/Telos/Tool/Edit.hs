@@ -11,7 +11,7 @@ import           Data.Aeson.Types     ( parseEither )
 import qualified Data.Algorithm.Diff  as Diff
 import qualified Data.Text            as T
 import qualified Data.Text.IO         as TIO
-import           Lens.Micro           ( (?~) )
+import           Control.Lens           ( (?~) )
 import           System.Directory     ( doesFileExist, getModificationTime )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )

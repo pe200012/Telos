@@ -13,7 +13,7 @@ import           Data.Aeson.Types     ( parseEither )
 import qualified Data.Text            as T
 import qualified Data.Text.IO         as TIO
 
-import           Lens.Micro           ( (?~), (^.), non )
+import           Control.Lens           ( (?~), (^.), non )
 
 import           System.Directory     ( doesDirectoryExist )
 import           System.Exit          ( ExitCode(..) )

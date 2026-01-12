@@ -4,7 +4,7 @@ import           Control.Exception     ( finally )
 
 import qualified Data.Text             as T
 
-import           Lens.Micro            ( (^.) )
+import           Control.Lens            ( (^.) )
 
 import           Relude
 

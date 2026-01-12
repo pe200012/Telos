@@ -4,7 +4,7 @@ import           Control.Concurrent.MVar ( isEmptyMVar )
 
 import           Data.Aeson              ( object )
 
-import           Lens.Micro              ( (^.) )
+import           Control.Lens              ( (^.) )
 
 import           Relude
 

@@ -11,7 +11,7 @@ import           Data.Aeson.Types     ( parseEither )
 import qualified Data.ByteString      as BS
 import qualified Data.Text            as T
 import qualified Data.Text.Encoding   as TE
-import           Lens.Micro           ( (?~) )
+import           Control.Lens           ( (?~) )
 import           System.Directory     ( doesFileExist, getModificationTime )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )

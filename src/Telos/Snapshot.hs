@@ -47,7 +47,7 @@ import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as TE
 import qualified Data.Text.IO            as TIO
 
-import           Lens.Micro.TH           ( makeLenses )
+import           Control.Lens           ( makeLenses )
 
 import           Relude
 

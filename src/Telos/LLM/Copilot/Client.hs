@@ -64,8 +64,8 @@ import qualified Data.ByteString.Lazy        as BL
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as TE
 
-import           Lens.Micro                  ( (^.), Lens', non )
-import           Lens.Micro.TH               ( makeLenses )
+import           Control.Lens                  ( (^.), Lens', non )
+import           Control.Lens               ( makeLenses )
 
 import           Network.HTTP.Client
 import           Network.HTTP.Client.Conduit ( bodyReaderSource )

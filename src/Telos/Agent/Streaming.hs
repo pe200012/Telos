@@ -22,8 +22,8 @@ import qualified Data.IntMap.Strict      as IntMap
 import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as TE
 
-import           Lens.Micro              ( (%~), (^.) )
-import           Lens.Micro.TH           ( makeLenses )
+import           Control.Lens              ( (%~), (^.) )
+import           Control.Lens           ( makeLenses )
 
 import           Relude
 

@@ -10,7 +10,7 @@ import           Data.Aeson           ( (.:), (.:?) )
 import           Data.Aeson.Types     ( parseEither )
 import qualified Data.Text            as T
 import qualified Data.Text.IO         as TIO
-import           Lens.Micro           ( (^.), (?~), non )
+import           Control.Lens           ( (^.), (?~), non )
 import           System.Directory     ( doesDirectoryExist, doesFileExist )
 import           System.FilePath.Glob ( compile, globDir1 )
 import           Text.Regex.TDFA      ( (=~) )

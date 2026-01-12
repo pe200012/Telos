@@ -24,8 +24,8 @@ module Telos.Agent.Context
   , modifyPruneState
   ) where
 
-import           Lens.Micro         ( (^.) )
-import           Lens.Micro.TH      ( makeLenses )
+import           Control.Lens         ( (^.) )
+import           Control.Lens      ( makeLenses )
 
 import           Relude
 

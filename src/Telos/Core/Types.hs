@@ -75,9 +75,9 @@ import           Data.Aeson     ( (.!=)
                                 , withText
                                 )
 
-import           Lens.Micro     ( (^.), non )
-import           Lens.Micro.Pro ( Prism', prism' )
-import           Lens.Micro.TH  ( makeLenses )
+import           Control.Lens     ( (^.), non )
+import           Control.Lens ( Prism', prism' )
+import           Control.Lens  ( makeLenses )
 
 import           Relude
 

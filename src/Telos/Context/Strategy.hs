@@ -25,8 +25,8 @@ import qualified Data.Text.Encoding     as TE
 
 import           Data.Aeson             ( Value(..), encode )
 
-import           Lens.Micro             ( (%~), (^.), (^?) )
-import           Lens.Micro.Aeson       ( key, _String )
+import           Control.Lens             ( (%~), (^.), (^?) )
+import           Data.Aeson.Lens       ( key, _String )
 
 import           Relude
 

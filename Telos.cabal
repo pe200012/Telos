@@ -34,6 +34,8 @@ library
       Telos.App
       Telos.CLI.Config
       Telos.CLI.Repl
+      Telos.Config.Load
+      Telos.Config.Types
       Telos.Context.Discard
       Telos.Context.Extract
       Telos.Context.Strategy
@@ -126,10 +128,8 @@ library
     , http-client-tls
     , http-conduit
     , http-types
-    , microlens
-    , microlens-aeson
-    , microlens-pro
-    , microlens-th
+    , lens
+    , lens-aeson
     , mtl
     , polysemy >=1.9
     , process >=1.6
@@ -147,6 +147,7 @@ library
     , unordered-containers
     , uuid
     , vector
+    , yaml >=0.11
   default-language: Haskell2010
 
 executable Telos-exe
@@ -202,10 +203,8 @@ executable Telos-exe
     , http-client-tls
     , http-conduit
     , http-types
-    , microlens
-    , microlens-aeson
-    , microlens-pro
-    , microlens-th
+    , lens
+    , lens-aeson
     , mtl
     , polysemy >=1.9
     , process >=1.6
@@ -223,6 +222,7 @@ executable Telos-exe
     , unordered-containers
     , uuid
     , vector
+    , yaml >=0.11
   default-language: Haskell2010
 
 test-suite Telos-test
@@ -303,10 +303,8 @@ test-suite Telos-test
     , http-client-tls
     , http-conduit
     , http-types
-    , microlens
-    , microlens-aeson
-    , microlens-pro
-    , microlens-th
+    , lens
+    , lens-aeson
     , mtl
     , polysemy >=1.9
     , process >=1.6
@@ -326,4 +324,5 @@ test-suite Telos-test
     , unordered-containers
     , uuid
     , vector
+    , yaml >=0.11
   default-language: Haskell2010

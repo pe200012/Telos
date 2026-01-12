@@ -6,7 +6,7 @@ import qualified Data.Aeson        as Aeson
 import qualified Data.ByteString   as BS
 import qualified Data.Text         as T
 
-import           Lens.Micro        ( (^.) )
+import           Control.Lens        ( (^.) )
 
 import           Relude
 
