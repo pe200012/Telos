@@ -4,6 +4,7 @@ module Telos.Tool.Registry
   , builtinToolList
   , executeBuiltinTool
   , isAgentTool
+  , isStreamingTool
   , taskToolName
   ) where
 
@@ -25,6 +26,7 @@ import           Telos.Tool.Types ( BuiltinTool(..)
                                   , ToolExecutorType(..)
                                   , ToolContext
                                   , ToolResult(..)
+                                  , StreamCallback
                                   , btExecutor
                                   , btTool
                                   )
@@ -60,9 +62,19 @@ isAgentTool name = case getBuiltinTool name of
 builtinToolList :: [ Tool ]
 builtinToolList = map (^. btTool) (Map.elems builtinTools)
 
-executeBuiltinTool :: ToolContext -> Text -> Value -> IO (Maybe ToolResult)
-executeBuiltinTool ctx name args = case getBuiltinTool name of
+-- | Check if a tool name is a streaming tool
+isStreamingTool :: Text -> Bool
+isStreamingTool name = case getBuiltinTool name of
+  Just bt -> case bt ^. btExecutor of
+    StreamingExecutor _ -> True
+    _                   -> False
+  Nothing -> False
+
+-- | Execute a builtin tool with optional streaming callback
+executeBuiltinTool :: StreamCallback -> ToolContext -> Text -> Value -> IO (Maybe ToolResult)
+executeBuiltinTool onChunk ctx name args = case getBuiltinTool name of
   Nothing -> pure Nothing
   Just bt -> case bt ^. btExecutor of
     SimpleExecutor exec -> Just <$> exec ctx args
+    StreamingExecutor exec -> Just <$> exec onChunk ctx args
     AgentExecutor -> pure $ Just $ ToolResult False "Agent executor not available in this context"

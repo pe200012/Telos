@@ -19,8 +19,12 @@ import           Telos.Tool.Types ( BuiltinTool(..)
 
 import           Test.Hspec
 
+-- | Run executor, handling both SimpleExecutor and StreamingExecutor
 runExecutor :: BuiltinTool -> ToolContext -> Aeson.Value -> IO ToolResult
-runExecutor bt = case _btExecutor bt of { SimpleExecutor f -> f; _ -> error "Not a SimpleExecutor" }
+runExecutor bt ctx args = case _btExecutor bt of
+  SimpleExecutor f    -> f ctx args
+  StreamingExecutor f -> f (const $ pure ()) ctx args  -- Discard streaming output in tests
+  _                   -> error "Not a supported executor"
 
 spec :: Spec
 spec = describe "BashTool" $ do

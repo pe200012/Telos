@@ -12,10 +12,17 @@ import qualified Data.Algorithm.Diff  as Diff
 import qualified Data.Text            as T
 import qualified Data.Text.IO         as TIO
 import           Lens.Micro           ( (?~) )
-import           System.Directory     ( doesFileExist )
+import           System.Directory     ( doesFileExist, getModificationTime )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )
-import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, ToolExecutorType(..), wasFileRead )
+import           Telos.Tool.Types     ( BuiltinTool(..)
+                                      , FileAssertError(..)
+                                      , ToolContext
+                                      , ToolExecutorType(..)
+                                      , ToolResult(..)
+                                      , assertFileRead
+                                      , markFileRead
+                                      )
 
 editDescription :: Text
 editDescription = """
@@ -77,29 +84,41 @@ executeEdit ctx args = do
       if not exists
         then pure $ ToolResult False ("File not found: " <> path)
         else do
-          wasRead <- wasFileRead ctx filePath
-          if not wasRead
-            then pure $ ToolResult False ("You must Read the file before editing it: " <> path)
-            else if oldStr == newStr
-              then pure $ ToolResult False "oldString and newString must be different"
-              else do
-                content <- TIO.readFile filePath
-                let occurrences = countOccurrences oldStr content
-                if occurrences == 0
-                  then pure $ ToolResult False "oldString not found in file"
-                  else if occurrences > 1 && not replaceAll
-                    then pure $ ToolResult False
-                      ("oldString found " <> T.pack (show occurrences) <> " times. Use replaceAll=true or provide more context.")
-                    else do
-                      let newContent = if replaceAll
-                            then T.replace oldStr newStr content
-                            else replaceFirst oldStr newStr content
-                          diff = generateDiff path content newContent
-                      TIO.writeFile filePath newContent
-                      let header = if replaceAll
-                            then "Replaced " <> T.pack (show occurrences) <> " occurrences\n\n"
-                            else "Replaced 1 occurrence\n\n"
-                      pure $ ToolResult True (header <> diff)
+          -- Assert file was read and not modified externally
+          assertResult <- assertFileRead ctx filePath
+          case assertResult of
+            Left (FileNotRead _) -> 
+              pure $ ToolResult False ("You must Read the file before editing it. File: " <> path)
+            Left (FileModifiedSinceRead _ mtime rtime) ->
+              pure $ ToolResult False $
+                "File " <> path <> " has been modified since it was last read.\n" <>
+                "Last modification: " <> show mtime <> "\n" <>
+                "Last read: " <> show rtime <> "\n\n" <>
+                "Please read the file again before modifying it."
+            Right () -> do
+              if oldStr == newStr
+                then pure $ ToolResult False "oldString and newString must be different"
+                else do
+                  content <- TIO.readFile filePath
+                  let occurrences = countOccurrences oldStr content
+                  if occurrences == 0
+                    then pure $ ToolResult False "oldString not found in file"
+                    else if occurrences > 1 && not replaceAll
+                      then pure $ ToolResult False
+                        ("oldString found " <> T.pack (show occurrences) <> " times. Use replaceAll=true or provide more context.")
+                      else do
+                        let newContent = if replaceAll
+                              then T.replace oldStr newStr content
+                              else replaceFirst oldStr newStr content
+                            diff = generateDiff path content newContent
+                        -- Write file
+                        TIO.writeFile filePath newContent
+                        -- Update read time after successful edit
+                        markFileRead ctx filePath . Just =<< getModificationTime filePath
+                        let header = if replaceAll
+                              then "Replaced " <> T.pack (show occurrences) <> " occurrences\n\n"
+                              else "Replaced 1 occurrence\n\n"
+                        pure $ ToolResult True (header <> diff)
   where
     parseArgs = Aeson.withObject "EditArgs" $ \o -> do
       path <- o .: "path"

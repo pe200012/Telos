@@ -272,8 +272,13 @@ executeToolCalls ctx toolCalls = do
     if isAgentTool tName
       then executeAgentTool ctx tc
       else do
-        -- Try builtin tool first
-        mBuiltinResult <- embed $ executeBuiltinTool toolCtx tName toolArgs
+        -- Try builtin tool first, with streaming callback for streaming tools
+        let streamCallback chunk = do
+              -- Output chunk to terminal in real-time
+              TIO.putStr chunk
+              hFlush stdout
+
+        mBuiltinResult <- embed $ executeBuiltinTool streamCallback toolCtx tName toolArgs
 
         case mBuiltinResult of
           Just builtinResult -> do

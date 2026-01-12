@@ -11,11 +11,18 @@ import           Data.Aeson.Types     ( parseEither )
 import qualified Data.Text            as T
 import qualified Data.Text.IO         as TIO
 import           Lens.Micro           ( (?~) )
-import           System.Directory     ( createDirectoryIfMissing, doesFileExist )
+import           System.Directory     ( createDirectoryIfMissing, doesFileExist, getModificationTime )
 import           System.FilePath      ( takeDirectory )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )
-import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, ToolExecutorType(..), wasFileRead )
+import           Telos.Tool.Types     ( BuiltinTool(..)
+                                      , FileAssertError(..)
+                                      , ToolContext
+                                      , ToolExecutorType(..)
+                                      , ToolResult(..)
+                                      , assertFileRead
+                                      , markFileRead
+                                      )
 
 writeDescription :: Text
 writeDescription = """
@@ -64,16 +71,26 @@ executeWrite ctx args = do
       exists <- doesFileExist filePath
       if exists
         then do
-          wasRead <- wasFileRead ctx filePath
-          if not wasRead
-            then pure $ ToolResult False ("You must Read the file before overwriting it: " <> path)
-            else doWrite filePath path content
+          -- Assert file was read and not modified externally
+          assertResult <- assertFileRead ctx filePath
+          case assertResult of
+            Left (FileNotRead _) -> 
+              pure $ ToolResult False ("You must Read the file before overwriting it. File: " <> path)
+            Left (FileModifiedSinceRead _ mtime rtime) ->
+              pure $ ToolResult False $
+                "File " <> path <> " has been modified since it was last read.\n" <>
+                "Last modification: " <> show mtime <> "\n" <>
+                "Last read: " <> show rtime <> "\n\n" <>
+                "Please read the file again before modifying it."
+            Right () -> doWrite filePath path content
         else doWrite filePath path content
   where
     doWrite filePath path content = do
       let dir = takeDirectory filePath
       createDirectoryIfMissing True dir
       TIO.writeFile filePath content
+      -- Update read time after successful write
+      markFileRead ctx filePath . Just =<< getModificationTime filePath
       pure $ ToolResult True ("Wrote " <> T.pack (show (T.length content)) <> " chars to " <> path)
 
     parseArgs = Aeson.withObject "WriteArgs" $ \o -> do

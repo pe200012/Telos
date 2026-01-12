@@ -4,23 +4,34 @@ module Telos.Tool.Bash ( bashTool ) where
 
 import           Relude
 
+import           Control.Concurrent.Async ( async, wait )
+import           Control.Exception        ( try )
 
 import qualified Data.Aeson           as Aeson
 import           Data.Aeson           ( (.:), (.:?) )
 import           Data.Aeson.Types     ( parseEither )
 import qualified Data.Text            as T
+import qualified Data.Text.IO         as TIO
+
 import           Lens.Micro           ( (?~), (^.), non )
-import           Control.Exception    ( try )
+
 import           System.Directory     ( doesDirectoryExist )
 import           System.Exit          ( ExitCode(..) )
-import           System.Process.Typed ( proc
-                                      , readProcess
-                                      , setWorkingDir
+import           System.Process       ( CreateProcess(..)
+                                      , StdStream(..)
+                                      , createProcess
+                                      , proc
+                                      , waitForProcess
                                       )
 import           System.Timeout       ( timeout )
 
 import           Telos.Core.Types     ( makeTool, toolDescription )
-import           Telos.Tool.Types     ( BuiltinTool(..), ToolResult(..), ToolContext, ToolExecutorType(..) )
+import           Telos.Tool.Types     ( BuiltinTool(..)
+                                      , StreamCallback
+                                      , ToolContext
+                                      , ToolExecutorType(..)
+                                      , ToolResult(..)
+                                      )
 
 bashDescription :: Text
 bashDescription = """
@@ -47,7 +58,7 @@ bashTool :: BuiltinTool
 bashTool = BuiltinTool
   { _btTool = makeTool "bash" inputSchema
       & toolDescription ?~ bashDescription
-  , _btExecutor = SimpleExecutor executeBash
+  , _btExecutor = StreamingExecutor executeBashStreaming
   }
   where
     inputSchema = Aeson.object
@@ -69,8 +80,9 @@ bashTool = BuiltinTool
       , "required" Aeson..= (["command"] :: [Text])
       ]
 
-executeBash :: ToolContext -> Aeson.Value -> IO ToolResult
-executeBash _ctx args = do
+-- | Execute bash command with streaming output
+executeBashStreaming :: StreamCallback -> ToolContext -> Aeson.Value -> IO ToolResult
+executeBashStreaming onChunk _ctx args = do
   case parseEither parseArgs args of
     Left err -> pure $ ToolResult False ("Invalid arguments: " <> T.pack err)
     Right (cmd, mWorkdir, mTimeout) -> do
@@ -86,19 +98,18 @@ executeBash _ctx args = do
         Right () -> do
           let timeoutMs = mTimeout ^. non 120000
               timeoutUs = timeoutMs * 1000
-              baseProc = proc "bash" ["-c", toString cmd]
-              procConfig = case mWorkdir of
-                Nothing -> baseProc
-                Just wd -> setWorkingDir (toString wd) baseProc
+              baseProc = (proc "bash" ["-c", toString cmd])
+                { std_out = CreatePipe
+                , std_err = CreatePipe
+                , cwd = toString <$> mWorkdir
+                }
 
-          mResult <- timeout timeoutUs $ try @SomeException $ readProcess procConfig
+          mResult <- timeout timeoutUs $ runStreamingProcess baseProc onChunk
 
           case mResult of
             Nothing -> pure $ ToolResult False "Command timed out"
-            Just (Left _) -> pure $ ToolResult False "Command timed out"
-            Just (Right (exitCode, stdoutBs, stderrBs)) -> do
-              let output = decodeUtf8 stdoutBs <> decodeUtf8 stderrBs
-                  success = exitCode == ExitSuccess
+            Just (exitCode, output) -> do
+              let success = exitCode == ExitSuccess
               pure $ ToolResult success (truncateOutput output)
   where
     parseArgs = Aeson.withObject "BashArgs" $ \o -> do
@@ -111,3 +122,42 @@ executeBash _ctx args = do
     truncateOutput t
       | T.length t > 50000 = T.take 50000 t <> "\n... (output truncated)"
       | otherwise = t
+
+-- | Run a process and stream its output through the callback
+runStreamingProcess :: CreateProcess -> StreamCallback -> IO (ExitCode, Text)
+runStreamingProcess cp onChunk = do
+  result <- try @SomeException $ createProcess cp
+  case result of
+    Left err -> pure (ExitFailure 1, "Failed to start process: " <> T.pack (show err))
+    Right (_, mStdout, mStderr, ph) -> do
+      -- Accumulator for full output
+      outputVar <- newTVarIO ""
+
+      -- Reader for a handle - reads lines and streams them
+      let readHandle mh = case mh of
+            Nothing -> pure ()
+            Just h -> do
+              hSetBuffering h LineBuffering
+              let loop = do
+                    eof <- hIsEOF h
+                    unless eof $ do
+                      line <- TIO.hGetLine h
+                      let chunk = line <> "\n"
+                      onChunk chunk  -- Stream to user
+                      atomically $ modifyTVar' outputVar (<> chunk)
+                      loop
+              loop
+
+      -- Read stdout and stderr concurrently
+      stdoutThread <- async $ readHandle mStdout
+      stderrThread <- async $ readHandle mStderr
+
+      -- Wait for both readers to complete
+      wait stdoutThread
+      wait stderrThread
+
+      -- Wait for process to exit
+      exitCode <- waitForProcess ph
+      output <- readTVarIO outputVar
+
+      pure (exitCode, output)
