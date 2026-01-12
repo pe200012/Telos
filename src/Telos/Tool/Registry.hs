@@ -15,6 +15,8 @@ import           Lens.Micro       ( (^.) )
 
 import           Relude
 
+import           Telos.Context.Discard ( discardTool )
+import           Telos.Context.Extract ( extractTool )
 import           Telos.Core.Types ( Tool )
 import           Telos.Tool.Bash  ( bashTool )
 import           Telos.Tool.Edit  ( editTool )
@@ -45,6 +47,8 @@ builtinTools
     , ( "edit", editTool )
     , ( "glob", globTool )
     , ( "grep", grepTool )
+    , ( "discard", discardTool )
+    , ( "extract", extractTool )
     , ( taskToolName, BuiltinTool taskTool AgentExecutor )
     ]
 

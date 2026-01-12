@@ -34,6 +34,11 @@ library
       Telos.App
       Telos.CLI.Config
       Telos.CLI.Repl
+      Telos.Context.Discard
+      Telos.Context.Extract
+      Telos.Context.Strategy
+      Telos.Context.Transform
+      Telos.Context.Types
       Telos.Core.Error
       Telos.Core.Types
       Telos.Effect.LLM
@@ -146,8 +151,6 @@ library
 executable Telos-exe
   main-is: Main.hs
   other-modules:
-      TestAgent
-      TestCopilot
       Paths_Telos
   autogen-modules:
       Paths_Telos
@@ -178,162 +181,6 @@ executable Telos-exe
       TypeOperators
       NoImplicitPrelude
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      Diff
-    , Glob
-    , Telos
-    , aeson >=2.0
-    , async >=2.2
-    , base >=4.7 && <5
-    , base16-bytestring
-    , bytestring
-    , conduit >=1.3
-    , conduit-extra
-    , containers
-    , cryptohash-sha256
-    , directory
-    , exceptions
-    , filepath
-    , http-client >=0.7
-    , http-client-tls
-    , http-conduit
-    , http-types
-    , microlens
-    , microlens-aeson
-    , microlens-pro
-    , microlens-th
-    , mtl
-    , polysemy >=1.9
-    , process >=1.6
-    , random
-    , regex-tdfa
-    , relude
-    , safe
-    , stm >=2.5
-    , text
-    , time
-    , transformers
-    , typed-process
-    , unix
-    , unliftio
-    , unordered-containers
-    , uuid
-    , vector
-  default-language: Haskell2010
-
-executable test-agent
-  main-is: TestAgent.hs
-  other-modules:
-      Main
-      TestCopilot
-      Paths_Telos
-  autogen-modules:
-      Paths_Telos
-  hs-source-dirs:
-      app
-  default-extensions:
-      BangPatterns
-      ConstraintKinds
-      DataKinds
-      DeriveAnyClass
-      DeriveFunctor
-      DeriveGeneric
-      DerivingStrategies
-      FlexibleContexts
-      FlexibleInstances
-      GADTs
-      GeneralizedNewtypeDeriving
-      LambdaCase
-      MultiParamTypeClasses
-      OverloadedStrings
-      PolyKinds
-      RankNTypes
-      ScopedTypeVariables
-      StandaloneDeriving
-      TemplateHaskell
-      TypeApplications
-      TypeFamilies
-      TypeOperators
-      NoImplicitPrelude
-  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -main-is TestAgent
-  build-depends:
-      Diff
-    , Glob
-    , Telos
-    , aeson >=2.0
-    , async >=2.2
-    , base >=4.7 && <5
-    , base16-bytestring
-    , bytestring
-    , conduit >=1.3
-    , conduit-extra
-    , containers
-    , cryptohash-sha256
-    , directory
-    , exceptions
-    , filepath
-    , http-client >=0.7
-    , http-client-tls
-    , http-conduit
-    , http-types
-    , microlens
-    , microlens-aeson
-    , microlens-pro
-    , microlens-th
-    , mtl
-    , polysemy >=1.9
-    , process >=1.6
-    , random
-    , regex-tdfa
-    , relude
-    , safe
-    , stm >=2.5
-    , text
-    , time
-    , transformers
-    , typed-process
-    , unix
-    , unliftio
-    , unordered-containers
-    , uuid
-    , vector
-  default-language: Haskell2010
-
-executable test-copilot
-  main-is: TestCopilot.hs
-  other-modules:
-      Main
-      TestAgent
-      Paths_Telos
-  autogen-modules:
-      Paths_Telos
-  hs-source-dirs:
-      app
-  default-extensions:
-      BangPatterns
-      ConstraintKinds
-      DataKinds
-      DeriveAnyClass
-      DeriveFunctor
-      DeriveGeneric
-      DerivingStrategies
-      FlexibleContexts
-      FlexibleInstances
-      GADTs
-      GeneralizedNewtypeDeriving
-      LambdaCase
-      MultiParamTypeClasses
-      OverloadedStrings
-      PolyKinds
-      RankNTypes
-      ScopedTypeVariables
-      StandaloneDeriving
-      TemplateHaskell
-      TypeApplications
-      TypeFamilies
-      TypeOperators
-      NoImplicitPrelude
-  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -main-is TestCopilot
   build-depends:
       Diff
     , Glob

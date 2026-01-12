@@ -9,6 +9,8 @@ module Telos.CLI.Config
   , ccMcpServers
   , ccStreamingEnabled
   , ccSnapshotEnabled
+  , ccPruneConfig
+  , defaultPruneConfig
   , McpServerEntry
   , makeMcpServerEntry
   , mseName
@@ -31,6 +33,8 @@ import           Relude
 
 import           System.Directory     ( XdgDirectory(XdgConfig), doesFileExist, getXdgDirectory )
 import           System.FilePath      ( (</>) )
+
+import           Telos.Context.Types  ( PruneConfig(..), defaultPruneConfig )
 
 -- | MCP Server entry in config file
 data McpServerEntry
@@ -74,6 +78,7 @@ data CliConfig
               , _ccMcpServers :: [ McpServerEntry ]
               , _ccStreamingEnabled :: Bool
               , _ccSnapshotEnabled :: Bool
+              , _ccPruneConfig :: PruneConfig
               }
   deriving stock ( Eq, Show, Generic )
 
@@ -87,6 +92,7 @@ makeCliConfig model
               , _ccMcpServers = []
               , _ccStreamingEnabled = True
               , _ccSnapshotEnabled = True
+              , _ccPruneConfig = defaultPruneConfig
               }
 
 defaultCliConfig :: CliConfig
@@ -97,6 +103,7 @@ defaultCliConfig
               , _ccMcpServers = []
               , _ccStreamingEnabled = True
               , _ccSnapshotEnabled = True
+              , _ccPruneConfig = defaultPruneConfig
               }
 
 instance FromJSON CliConfig where
@@ -106,6 +113,7 @@ instance FromJSON CliConfig where
     <*> o .:? "mcpServers" .!= []
     <*> o .:? "streamingEnabled" .!= True
     <*> o .:? "snapshotEnabled" .!= True
+    <*> o .:? "pruneConfig" .!= defaultPruneConfig
 
 instance ToJSON CliConfig where
   toJSON cfg
@@ -116,6 +124,7 @@ instance ToJSON CliConfig where
       , "mcpServers" .= (cfg ^. ccMcpServers)
       , "streamingEnabled" .= (cfg ^. ccStreamingEnabled)
       , "snapshotEnabled" .= (cfg ^. ccSnapshotEnabled)
+      , "pruneConfig" .= (cfg ^. ccPruneConfig)
       ]
 
 -- | Get the config file path (~/.config/telos/config.json)

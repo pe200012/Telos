@@ -26,6 +26,7 @@ import           Telos.Agent.Config  ( acMaxIterations )
 import           Telos.Agent.Context ( AgentContext(..)
                                      , ctxConfig
                                      , ctxInterrupt
+                                     , ctxPruneState
                                      , ctxToolContext
                                      , ctxTools
                                      )
@@ -85,6 +86,7 @@ createSubagentContext parent cfg = do
     , _ctxIteration   = newIteration            -- ISOLATED
     , _ctxConfig      = newConfigVar            -- COPIED
     , _ctxToolContext = parent ^. ctxToolContext -- SHARED
+    , _ctxPruneState  = parent ^. ctxPruneState  -- SHARED (inherits parent's pruning state)
     }
 
 -- | Run a subagent with the given configuration

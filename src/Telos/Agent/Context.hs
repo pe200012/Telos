@@ -8,6 +8,7 @@ module Telos.Agent.Context
   , ctxIteration
   , ctxConfig
   , ctxToolContext
+  , ctxPruneState
   , newAgentContext
   , addMessage
   , getHistory
@@ -18,6 +19,9 @@ module Telos.Agent.Context
   , getIterationCount
   , incrementIteration
   , resetIteration
+  , getPruneState
+  , setPruneState
+  , modifyPruneState
   ) where
 
 import           Lens.Micro         ( (^.) )
@@ -26,6 +30,7 @@ import           Lens.Micro.TH      ( makeLenses )
 import           Relude
 
 import           Telos.Agent.Config ( AgentConfig )
+import           Telos.Context.Types ( PruneState, emptyPruneState )
 import           Telos.Core.Types   ( Message, Tool )
 import           Telos.Tool.Types   ( ToolContext, newToolContext )
 
@@ -37,6 +42,7 @@ data AgentContext
   , _ctxIteration   :: TVar Int
   , _ctxConfig      :: TVar AgentConfig
   , _ctxToolContext :: ToolContext
+  , _ctxPruneState  :: TVar PruneState
   }
 
 makeLenses ''AgentContext
@@ -48,6 +54,7 @@ newAgentContext cfg = do
   interrupt <- newEmptyMVar
   iteration <- newTVarIO 0
   configVar <- newTVarIO cfg
+  pruneState <- newTVarIO emptyPruneState
   toolCtx <- newToolContext
   pure
     AgentContext { _ctxHistory     = history
@@ -56,6 +63,7 @@ newAgentContext cfg = do
                  , _ctxIteration   = iteration
                  , _ctxConfig      = configVar
                  , _ctxToolContext = toolCtx
+                 , _ctxPruneState  = pruneState
                  }
 
 addMessage :: AgentContext -> Message -> IO ()
@@ -86,3 +94,12 @@ incrementIteration ctx = atomically $ do
 
 resetIteration :: AgentContext -> IO ()
 resetIteration ctx = atomically $ writeTVar (ctx ^. ctxIteration) 0
+
+getPruneState :: AgentContext -> IO PruneState
+getPruneState ctx = readTVarIO (ctx ^. ctxPruneState)
+
+setPruneState :: AgentContext -> PruneState -> IO ()
+setPruneState ctx ps = atomically $ writeTVar (ctx ^. ctxPruneState) ps
+
+modifyPruneState :: AgentContext -> (PruneState -> PruneState) -> IO ()
+modifyPruneState ctx f = atomically $ modifyTVar' (ctx ^. ctxPruneState) f

@@ -18,14 +18,14 @@ import           Data.Aeson                ( Value )
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 
-import           Lens.Micro                ( (.~), (^?), (^.), _last, non )
+import           Lens.Micro                ( (%~), (.~), (^?), (^.), _last, non )
 import           Lens.Micro.Aeson          ( key, _String, _Integer )
 
 import           Polysemy                  ( Embed, Members, Sem, embed )
 
 import           Relude
 
-import           Telos.Agent.Config        ( acMaxIterations, acPromptConfig )
+import           Telos.Agent.Config        ( acMaxIterations, acPromptConfig, acPruneConfig )
 import           Telos.Agent.Context       ( AgentContext(..)
                                            , addMessage
                                            , ctxConfig
@@ -33,8 +33,10 @@ import           Telos.Agent.Context       ( AgentContext(..)
                                            , ctxToolContext
                                            , getHistory
                                            , getIterationCount
+                                           , getPruneState
                                            , getTools
                                            , incrementIteration
+                                           , modifyPruneState
                                            , resetIteration
                                            )
 import           Telos.Agent.Interrupt     ( checkInterrupted )
@@ -43,6 +45,9 @@ import           Telos.Agent.Subagent      ( SubagentConfig(..)
                                            , SubagentResult(..)
                                            , runSubagent
                                            )
+import           Telos.Context.Strategy    ( computeParamKey, extractFilePath, runStrategies )
+import           Telos.Context.Transform   ( injectPrunableList, transformMessages, updateToolCache )
+import           Telos.Context.Types       ( pcEnabled, psCurrentTurn )
 import qualified Telos.Core.Types          as Core
 import           Telos.Core.Types          ( _AssistantMsg )
 import           Telos.Effect.LLM          ( LLM, chat, chatStream )
@@ -73,6 +78,8 @@ runAgentLoop
 runAgentLoop ctx userInput = do
   embed $ resetIteration ctx
   embed $ addMessage ctx (Core.UserMessage userInput)
+  -- Increment turn counter for DCP tracking
+  embed $ modifyPruneState ctx $ \ps -> ps & psCurrentTurn %~ (+ 1)
   logInfo
     $ "User: "
     <> T.take 100 userInput
@@ -155,11 +162,24 @@ agentStep ctx = do
 
   config <- embed $ readTVarIO @IO (ctx ^. ctxConfig)
   let mPromptConfig = config ^. acPromptConfig
-  messages <- case mPromptConfig of
+      pruneConfig   = config ^. acPruneConfig
+
+  -- Build base messages with system prompt
+  baseMessages <- case mPromptConfig of
     Nothing  -> pure history
     Just cfg -> do
       sysPrompt <- embed $ buildSystemPrompt cfg
       pure $ Core.SystemMessage sysPrompt : history
+
+  -- Apply DCP if enabled
+  messages <- if pruneConfig ^. pcEnabled
+    then do
+      pruneState <- embed $ getPruneState ctx
+      let pruneState' = runStrategies pruneConfig pruneState
+      embed $ modifyPruneState ctx (const pruneState')
+      let transformed = transformMessages pruneState' baseMessages
+      pure $ injectPrunableList pruneConfig pruneState' transformed
+    else pure baseMessages
 
   logDebug $ "Calling LLM with " <> T.pack (show $ length messages) <> " messages"
 
@@ -187,11 +207,24 @@ agentStepStreaming ctx = do
 
   config <- embed $ readTVarIO @IO (ctx ^. ctxConfig)
   let mPromptConfig = config ^. acPromptConfig
-  messages <- case mPromptConfig of
+      pruneConfig   = config ^. acPruneConfig
+
+  -- Build base messages with system prompt
+  baseMessages <- case mPromptConfig of
     Nothing  -> pure history
     Just cfg -> do
       sysPrompt <- embed $ buildSystemPrompt cfg
       pure $ Core.SystemMessage sysPrompt : history
+
+  -- Apply DCP if enabled
+  messages <- if pruneConfig ^. pcEnabled
+    then do
+      pruneState <- embed $ getPruneState ctx
+      let pruneState' = runStrategies pruneConfig pruneState
+      embed $ modifyPruneState ctx (const pruneState')
+      let transformed = transformMessages pruneState' baseMessages
+      pure $ injectPrunableList pruneConfig pruneState' transformed
+    else pure baseMessages
 
   logDebug $ "Calling LLM (streaming) with " <> T.pack (show $ length messages) <> " messages"
 
@@ -269,7 +302,7 @@ executeToolCalls ctx toolCalls = do
     logDebug $ "Executing tool: " <> tName
 
     -- Check if this is an agent-aware tool (like 'task')
-    if isAgentTool tName
+    resultMsg <- if isAgentTool tName
       then executeAgentTool ctx tc
       else do
         -- Try builtin tool first, with streaming callback for streaming tools
@@ -301,6 +334,17 @@ executeToolCalls ctx toolCalls = do
                     isError = toolResult ^. trIsError
                 logDebug $ "Tool result: " <> content
                 pure $ Core.ToolResultMessage toolId tName content isError
+
+    -- Update tool cache for DCP tracking
+    let (resultContent, isError) = case resultMsg of
+          Core.ToolResultMessage _ _ c e -> (c, e)
+          _                              -> ("", False)
+        paramKey = computeParamKey tName toolArgs
+        filePath = extractFilePath tName toolArgs
+    embed $ modifyPruneState ctx $ \ps ->
+      updateToolCache ps tName paramKey isError filePath resultContent
+
+    pure resultMsg
 
 -- | Execute an agent-aware tool (like 'task')
 executeAgentTool :: Members '[ LLM, MCP, Logger, Embed IO ] r

@@ -128,30 +128,6 @@ executables:
     dependencies:
       - Telos
 
-  test-copilot:
-    main: TestCopilot.hs
-    source-dirs: app
-    ghc-options:
-      - -threaded
-      - -rtsopts
-      - -with-rtsopts=-N
-      - -main-is
-      - TestCopilot
-    dependencies:
-      - Telos
-
-  test-agent:
-    main: TestAgent.hs
-    source-dirs: app
-    ghc-options:
-      - -threaded
-      - -rtsopts
-      - -with-rtsopts=-N
-      - -main-is
-      - TestAgent
-    dependencies:
-      - Telos
-
 tests:
   Telos-test:
     main: Spec.hs
