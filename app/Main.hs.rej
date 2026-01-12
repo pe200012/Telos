@@ -1,0 +1,12 @@
+--- app/Main.hs
++++ app/Main.hs
+@@ -17,6 +17,9 @@ import           Relude
+ 
+ import           Telos.Agent.Loop         ( AgentResult(..), runAgentLoop )
+ import           Telos.CLI.Config         ( configFilePath, loadConfig, loadTelosConfig )
++import           Telos.Config.Types       ( tcModel )
++import           Control.Lens             ( (^.) )
++
+ import           Telos.CLI.Repl           ( newReplState
+                                           , rsAgentContext
+                                           , rsAuth

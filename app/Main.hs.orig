@@ -16,9 +16,7 @@ import           Polysemy.Error           ( runError )
 import           Relude
 
 import           Telos.Agent.Loop         ( AgentResult(..), runAgentLoop )
-import           Telos.CLI.Config         ( configFilePath, loadConfig, loadTelosConfig )
-import           Telos.Config.Types       ( tcModel )
-import           Control.Lens             ( (^.) )
+import           Telos.CLI.Config         ( configFilePath, loadConfig )
 import           Telos.CLI.Repl           ( newReplState
                                           , rsAgentContext
                                           , rsAuth
@@ -35,13 +33,9 @@ import           Telos.MCP.Interpreter    ( runMCPWithManager )
 main :: IO ()
 main = do
   -- Load configuration
-  config      <- loadConfig
-  telosConfig <- loadTelosConfig
+  config <- loadConfig
   cfgPath <- configFilePath
   TIO.putStrLn $ "Configuration: " <> T.pack cfgPath
-  
-  -- Extract model name from TelosConfig
-  let modelName = telosConfig ^. tcModel
 
   -- Initialize HTTP manager and Copilot auth
   httpManager <- newManager tlsManagerSettings
@@ -54,7 +48,7 @@ main = do
 
   -- Run REPL with agent runner
   runRepl replState $ \replSt userInput -> do
-    let copilotCfg = CopilotConfig { _ccModel = modelName, _ccMaxTokens = Just 4096 }
+    let copilotCfg = CopilotConfig { _ccModel = "gpt-4o", _ccMaxTokens = Just 4096 }
         client     = newCopilotClient (rsAuth replSt) httpManager copilotCfg
 
     result <- runM
