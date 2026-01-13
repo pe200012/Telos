@@ -10,6 +10,8 @@ data LLMError
   | LLMParseError Text
   | LLMTimeout
   | LLMUnknownError Text
+  | LLMProviderNotConfigured Text
+  | LLMInvalidResponse Text
   deriving stock ( Eq, Show, Generic )
 
 data MCPError

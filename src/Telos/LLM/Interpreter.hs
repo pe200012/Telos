@@ -4,7 +4,11 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Telos.LLM.Interpreter ( runLLMWithCopilot ) where
+module Telos.LLM.Interpreter
+  ( runLLMWithCopilot
+  , runLLMWithProvider
+  , makeProviderInfo
+  ) where
 
 import           Conduit                  ( (.|), ConduitT, awaitForever, yield )
 
@@ -24,25 +28,31 @@ import           Telos.Core.Types         ( AssistantMessage
                                           )
 import           Telos.Effect.LLM         ( LLM(..) )
 import           Telos.LLM.Copilot.Client ( ChatResponse(..)
-                                          , CopilotClient(..)
-                                          , Delta(..)
-                                          , ToolCallChunk(..)
-                                          , ccMaxTokens
-                                          , ccModel
-                                          , chChoices
-                                          , chDelta
-                                          , chMessage
-                                          , clConfig
-                                          , dContent
-                                          , dToolCalls
-                                          , fcArguments
-                                          , fcName
-                                          , sendChatRequest
-                                          , sendChatRequestStream
-                                          , tccFunction
-                                          , tccId
-                                          , tccIndex
-                                          )
+                                           , CopilotClient(..)
+                                           , Delta(..)
+                                           , ToolCallChunk(..)
+                                           , ccMaxTokens
+                                           , ccModel
+                                           , chChoices
+                                           , chDelta
+                                           , chMessage
+                                           , clConfig
+                                           , dContent
+                                           , dToolCalls
+                                           , fcArguments
+                                           , fcName
+                                           , sendChatRequest
+                                           , sendChatRequestStream
+                                           , tccFunction
+                                           , tccId
+                                           , tccIndex
+                                           )
+import           Telos.LLM.Provider.Types ( Provider(..)
+                                           , providerComplete
+                                           , providerCompleteStreaming
+                                           , providerModel
+                                           , providerName
+                                           )
 
 -- | Run LLM effect with Copilot backend
 runLLMWithCopilot :: Member (Embed IO) r => CopilotClient -> InterpreterFor LLM r
@@ -64,6 +74,19 @@ runLLMWithCopilot client = interpret $ \case
   GetProviderInfo           -> pure
     $ makeProviderInfo "GitHub Copilot" (client ^. clConfig . ccModel)
     & piMaxTokens .~ (client ^. clConfig . ccMaxTokens)
+
+-- | Run LLM effect with generic Provider backend
+runLLMWithProvider :: Member (Embed IO) r => Provider -> InterpreterFor LLM r
+runLLMWithProvider provider = interpret $ \case
+  Chat messages tools       -> do
+    embed $ providerComplete provider messages tools
+
+  ChatStream messages tools -> do
+    _ <- embed $ providerCompleteStreaming provider messages tools (\_ -> pure ())
+    pure $ pure $ StreamInterrupted (makePartialMessage "" [])
+
+  GetProviderInfo           -> pure
+    $ makeProviderInfo (providerName provider) (providerModel provider)
 
 -- | Extract assistant message from chat response
 extractAssistantMessage :: ChatResponse -> Maybe AssistantMessage

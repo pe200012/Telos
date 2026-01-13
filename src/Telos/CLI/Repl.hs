@@ -14,7 +14,7 @@ module Telos.CLI.Repl
   , rsAgentContext
   , rsConfig
   , rsServerManager
-  , rsAuth
+  , rsProvider
   , rsUndoStack
   , rsRedoStack
   , rsSnapshotConfig
@@ -55,7 +55,7 @@ import           Telos.Context.Transform ( estimateContextTokens )
 import           Telos.Context.Types     ( pcEnabled )
 import           Telos.Core.Types        ( Message, toolDescription, toolName )
 import           Telos.LLM.ModelLimits   ( getContextLength )
-import           Telos.LLM.Copilot.Auth  ( CopilotAuth )
+import           Telos.LLM.Provider.Types ( Provider )
 import           Telos.MCP.ServerManager ( ServerManager
                                          , ServerStatus(..)
                                          , aggregateTools
@@ -89,18 +89,18 @@ data UndoEntry = UndoEntry
 -- | REPL state
 data ReplState
   = ReplState { rsConfig        :: CliConfig
-              , rsServerManager :: ServerManager
-              , rsAgentContext  :: AgentContext
-              , rsAuth          :: CopilotAuth
-              , rsSessionId     :: Maybe SessionId
-              , rsUndoStack     :: [UndoEntry]    -- Stack of undo entries
-              , rsRedoStack     :: [UndoEntry]    -- Stack of redo entries
-              , rsSnapshotConfig :: SnapshotConfig -- Snapshot configuration
-              }
+               , rsServerManager :: ServerManager
+               , rsAgentContext  :: AgentContext
+               , rsProvider      :: Provider
+               , rsSessionId     :: Maybe SessionId
+               , rsUndoStack     :: [UndoEntry]    -- Stack of undo entries
+               , rsRedoStack     :: [UndoEntry]    -- Stack of redo entries
+               , rsSnapshotConfig :: SnapshotConfig -- Snapshot configuration
+               }
 
 -- | Create new REPL state
-newReplState :: CliConfig -> CopilotAuth -> IO ReplState
-newReplState config auth = do
+newReplState :: CliConfig -> Provider -> IO ReplState
+newReplState config provider = do
   -- Create lazy server manager and register servers
   serverMgr <- newServerManager
   mapM_ (registerServer serverMgr) (config ^. ccMcpServers)
@@ -120,7 +120,7 @@ newReplState config auth = do
     $ ReplState { rsConfig        = config
                 , rsServerManager = serverMgr
                 , rsAgentContext  = agentCtx
-                , rsAuth          = auth
+                , rsProvider      = provider
                 , rsSessionId     = Nothing
                 , rsUndoStack     = []
                 , rsRedoStack     = []

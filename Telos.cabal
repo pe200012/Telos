@@ -55,6 +55,13 @@ library
       Telos.LLM.Copilot.Interpreter
       Telos.LLM.Interpreter
       Telos.LLM.ModelLimits
+      Telos.LLM.Provider.Anthropic
+      Telos.LLM.Provider.Copilot
+      Telos.LLM.Provider.Google
+      Telos.LLM.Provider.Manager
+      Telos.LLM.Provider.Mistral
+      Telos.LLM.Provider.OpenAI
+      Telos.LLM.Provider.Types
       Telos.LLM.Streaming
       Telos.MCP.Client
       Telos.MCP.Interpreter
