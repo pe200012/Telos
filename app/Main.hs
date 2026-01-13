@@ -20,16 +20,18 @@ import           Telos.CLI.Config         ( configFilePath, loadConfig, loadTelo
 import           Telos.Config.Types       ( tcModel )
 import           Control.Lens             ( (^.) )
 import           Telos.CLI.Repl           ( newReplState
-                                          , rsAgentContext
-                                          , rsAuth
-                                          , rsServerManager
-                                          , runRepl
-                                          )
+                                           , rsAgentContext
+                                           , rsProvider
+                                           , rsServerManager
+                                           , runRepl
+                                           )
 import           Telos.Core.Error         ( AppError )
 import           Telos.Effect.Logger.IO   ( runLoggerIO )
 import           Telos.LLM.Copilot.Auth   ( newCopilotAuth )
 import           Telos.LLM.Copilot.Client ( CopilotConfig(..), newCopilotClient )
-import           Telos.LLM.Interpreter    ( runLLMWithCopilot )
+import           Telos.LLM.Interpreter    ( runLLMWithProvider )
+import           Telos.LLM.Provider.Copilot ( createCopilotProvider )
+import           Telos.LLM.Provider.Manager ( createProviderFromConfig )
 import           Telos.MCP.Interpreter    ( runMCPWithManager )
 
 main :: IO ()
@@ -39,29 +41,40 @@ main = do
   telosConfig <- loadTelosConfig
   cfgPath <- configFilePath
   TIO.putStrLn $ "Configuration: " <> T.pack cfgPath
-  
-  -- Extract model name from TelosConfig
-  let modelName = telosConfig ^. tcModel
 
-  -- Initialize HTTP manager and Copilot auth
+  -- Initialize HTTP manager
   httpManager <- newManager tlsManagerSettings
-  TIO.putStrLn "Authenticating with GitHub Copilot..."
-  auth <- newCopilotAuth httpManager
-  TIO.putStrLn "Authentication successful."
+
+  -- Create provider from config
+  TIO.putStrLn "Creating LLM provider..."
+  providerResult <- createProviderFromConfig telosConfig httpManager
+
+  provider <- case providerResult of
+    Left err -> do
+      TIO.putStrLn $ "Error creating provider: " <> T.pack (show err)
+      -- Fallback to Copilot for backward compatibility
+      TIO.putStrLn "Falling back to GitHub Copilot..."
+      auth <- newCopilotAuth httpManager
+      let copilotConfig = CopilotConfig
+            { _ccModel = telosConfig ^. tcModel
+            , _ccMaxTokens = Just 4096
+            }
+          copilotClient = newCopilotClient auth httpManager copilotConfig
+      createCopilotProvider copilotClient
+    Right p -> do
+      TIO.putStrLn "Provider created successfully."
+      pure p
 
   -- Create REPL state
-  replState <- newReplState config auth
+  replState <- newReplState config provider
 
   -- Run REPL with agent runner
   runRepl replState $ \replSt userInput -> do
-    let copilotCfg = CopilotConfig { _ccModel = modelName, _ccMaxTokens = Just 4096 }
-        client     = newCopilotClient (rsAuth replSt) httpManager copilotCfg
-
     result <- runM
       $ runError @AppError
       $ runLoggerIO
       $ runMCPWithManager (rsServerManager replSt)
-      $ runLLMWithCopilot client
+      $ runLLMWithProvider (rsProvider replSt)
       $ runAgentLoop (rsAgentContext replSt) userInput
 
     case result of

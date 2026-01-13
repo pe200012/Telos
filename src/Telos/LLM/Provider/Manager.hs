@@ -18,6 +18,7 @@ import qualified Telos.LLM.Provider.OpenAI as OpenAI
 import qualified Telos.LLM.Provider.Mistral as Mistral
 import qualified Telos.LLM.Provider.Anthropic as Anthropic
 import qualified Telos.LLM.Provider.Google as Google
+import qualified Telos.LLM.Provider.Zai as Zai
 
 import           Telos.Config.Types       ( TelosConfig
                                           , ProviderConfig
@@ -52,6 +53,9 @@ createProvider pType model config mgr = case pType of
   Mistral   -> do
     result <- Mistral.newProvider model config mgr
     pure $ either (Left . llmToAppError) Right result
+  Zai       -> do
+    result <- Zai.newProvider model config mgr
+    pure $ either (Left . llmToAppError) Right result
   Copilot   -> pure $ Left $ AppConfigError
     "Copilot provider requires special auth flow, use createCopilotProvider instead"
 
@@ -83,4 +87,5 @@ providerTypeToKey OpenAI    = "openai"
 providerTypeToKey Anthropic = "anthropic"
 providerTypeToKey Google    = "google"
 providerTypeToKey Mistral   = "mistral"
+providerTypeToKey Zai       = "zai"
 providerTypeToKey Copilot   = "copilot"

@@ -62,6 +62,7 @@ library
       Telos.LLM.Provider.Mistral
       Telos.LLM.Provider.OpenAI
       Telos.LLM.Provider.Types
+      Telos.LLM.Provider.Zai
       Telos.LLM.Streaming
       Telos.MCP.Client
       Telos.MCP.Interpreter
@@ -129,6 +130,7 @@ library
     , containers
     , cryptohash-sha256
     , directory
+    , errors
     , exceptions
     , filepath
     , http-client >=0.7
@@ -204,6 +206,7 @@ executable Telos-exe
     , containers
     , cryptohash-sha256
     , directory
+    , errors
     , exceptions
     , filepath
     , http-client >=0.7
@@ -302,6 +305,7 @@ test-suite Telos-test
     , containers
     , cryptohash-sha256
     , directory
+    , errors
     , exceptions
     , filepath
     , hspec >=2.10

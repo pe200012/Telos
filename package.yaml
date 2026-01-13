@@ -77,6 +77,8 @@ dependencies:
   # Cryptographic hashing
   - cryptohash-sha256
   - base16-bytestring
+  # Erros and Exceptions
+  - errors
 
 default-extensions:
   - BangPatterns

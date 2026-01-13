@@ -229,9 +229,35 @@ modelLimitsTable = Map.fromList
   , ("llama-3.1-70b", ModelLimits 128000 8192)
   , ("llama-3.1-8b", ModelLimits 128000 8192)
 
-    -- ==========================================================================
-    -- Microsoft Phi Models
-    -- ==========================================================================
-  , ("phi4", ModelLimits 16000 16000)
-  , ("phi-4", ModelLimits 16000 16000)
-  ]
+     -- ==========================================================================
+     -- Microsoft Phi Models
+     -- ==========================================================================
+   , ("phi4", ModelLimits 16000 16000)
+   , ("phi-4", ModelLimits 16000 16000)
+
+     -- ==========================================================================
+     -- Z.AI Models (Zhipu AI / BigModel)
+     -- ==========================================================================
+   , ("glm-4.7", ModelLimits 200000 64000)
+   , ("glm-4.7-flash", ModelLimits 200000 64000)
+   , ("glm-4.7-thinking", ModelLimits 200000 64000)
+   , ("glm-4.6", ModelLimits 200000 64000)
+   , ("glm-4.6v", ModelLimits 128000 64000)
+   , ("glm-4.5", ModelLimits 128000 64000)
+   , ("glm-4-alltools", ModelLimits 128000 64000)
+   , ("glm-4.5-long", ModelLimits 128000 64000)
+   , ("glm-4", ModelLimits 128000 64000)
+   , ("glm-4-flash", ModelLimits 128000 64000)
+   , ("glm-3-turbo", ModelLimits 128000 64000)
+   , ("glm-3.5-turbo", ModelLimits 128000 64000)
+   , ("glm-3.5-long", ModelLimits 128000 64000)
+   , ("glm-3-flash", ModelLimits 128000 64000)
+   , ("glm-4-plus", ModelLimits 200000 64000)
+   , ("glm-4-air", ModelLimits 200000 64000)
+   , ("glm-4-0520", ModelLimits 128000 64000)
+   , ("glm-4-air", ModelLimits 200000 64000)
+   , ("glm-4-long", ModelLimits 128000 64000)
+   , ("glm-4-flashx", ModelLimits 128000 64000)
+   , ("glm-4v", ModelLimits 128000 64000)
+   , ("glm-3v", ModelLimits 128000 64000)
+   ]

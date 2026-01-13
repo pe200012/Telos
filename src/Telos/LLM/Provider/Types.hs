@@ -27,6 +27,7 @@ data ProviderType
   | Anthropic
   | Google
   | Mistral
+  | Zai
   | Copilot
   deriving stock ( Eq, Show, Generic )
   deriving anyclass ( ToJSON, FromJSON )
@@ -37,6 +38,8 @@ parseProvider "openai"    = Just OpenAI
 parseProvider "anthropic" = Just Anthropic
 parseProvider "google"    = Just Google
 parseProvider "mistral"   = Just Mistral
+parseProvider "zai"       = Just Zai
+parseProvider "z.ai"      = Just Zai
 parseProvider "copilot"   = Just Copilot
 parseProvider _           = Nothing
 
@@ -66,6 +69,7 @@ providerName p = case providerType p of
   Anthropic -> "Anthropic"
   Google    -> "Google"
   Mistral   -> "Mistral"
+  Zai       -> "Z.AI"
   Copilot   -> "GitHub Copilot"
 
 -- | Send messages and get response (non-streaming)

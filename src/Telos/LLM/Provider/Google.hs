@@ -33,7 +33,7 @@ newProvider model config manager = do
       let baseUrl = case config ^. pcBaseURL of
             Just url -> url
             Nothing  -> "https://generativelanguage.googleapis.com/v1beta"
-      
+
       pure $ Right $ Provider
         { providerType = Google
         , providerModel = model
@@ -44,10 +44,10 @@ newProvider model config manager = do
 -- | Convert Telos messages to Google Gemini format
 -- Returns (Maybe system instruction, contents array)
 convertToGeminiMessages :: [Message] -> (Maybe Text, [A.Value])
-convertToGeminiMessages msgs = 
+convertToGeminiMessages msgs =
   let systemPrompt = listToMaybe [c | SystemMessage c <- msgs]
       contents = flip mapMaybe msgs $ \case
-        UserMessage c -> Just $ A.object 
+        UserMessage c -> Just $ A.object
           [ "role" A..= ("user" :: Text)
           , "parts" A..= [A.object ["text" A..= c]]
           ]
@@ -58,7 +58,7 @@ convertToGeminiMessages msgs =
         SystemMessage _ -> Nothing  -- Extracted separately
         ToolResultMessage _ name result _ -> Just $ A.object
           [ "role" A..= ("user" :: Text)
-          , "parts" A..= [A.object 
+          , "parts" A..= [A.object
               [ "functionResponse" A..= A.object
                   [ "name" A..= name
                   , "response" A..= A.object ["result" A..= result]
@@ -85,17 +85,17 @@ buildRequest baseUrl apiKey model messages tools streaming = do
   let (systemPrompt, geminiContents) = convertToGeminiMessages messages
       endpoint = if streaming then ":streamGenerateContent" else ":generateContent"
       url = T.unpack baseUrl <> "/models/" <> T.unpack model <> T.unpack endpoint <> "?alt=sse"
-      
+
       body = A.object $ catMaybes
         [ ("system_instruction" A..=) . (\txt -> A.object ["parts" A..= [A.object ["text" A..= txt]]]) <$> systemPrompt
         , Just $ "contents" A..= geminiContents
         , if null tools then Nothing else Just $ "tools" A..= [convertToGeminiTools tools]
         ]
-  
+
   initReq <- parseRequest url
   pure $ initReq
     { method = "POST"
-    , requestHeaders = 
+    , requestHeaders =
         [ ("x-goog-api-key", TE.encodeUtf8 apiKey)
         , ("content-type", "application/json")
         ]
@@ -108,32 +108,32 @@ parseGeminiResponse val = do
   obj <- case val of
     A.Object o -> Right o
     _ -> Left "Response is not an object"
-  
+
   candidates <- case KM.lookup "candidates" obj of
     Just (A.Array arr) -> Right arr
     _ -> Left "No candidates array in response"
-  
+
   firstCandidate <- case toList candidates of
     [] -> Left "Empty candidates array"
     (c:_) -> case c of
       A.Object o -> Right o
       _ -> Left "Candidate is not an object"
-  
+
   content <- case KM.lookup "content" firstCandidate of
     Just (A.Object o) -> Right o
     _ -> Left "No content in candidate"
-  
+
   parts <- case KM.lookup "parts" content of
     Just (A.Array arr) -> Right arr
     _ -> Left "No parts in content"
-  
+
   -- Extract text from parts
   let textBlocks = flip mapMaybe (toList parts) $ \part -> case part of
         A.Object o -> KM.lookup "text" o >>= \case
           A.String t -> Just t
           _ -> Nothing
         _ -> Nothing
-  
+
   let fullText = T.intercalate "\n" textBlocks
   pure $ makeAssistantMessage (if T.null fullText then Nothing else Just fullText) []
 
@@ -172,13 +172,13 @@ parseSSESource = do
 
 -- | Parse Gemini stream chunks to StreamEvents
 parseStreamChunks :: ConduitT A.Value StreamEvent IO ()
-parseStreamChunks = awaitForever $ \val -> case val of
+parseStreamChunks = awaitForever $ \case
   A.Object obj -> do
     case KM.lookup "candidates" obj of
-      Just (A.Array candidates) -> forM_ (toList candidates) $ \candidate -> case candidate of
+      Just (A.Array candidates) -> forM_ (toList candidates) $ \case
         A.Object candObj -> case KM.lookup "content" candObj of
           Just (A.Object content) -> case KM.lookup "parts" content of
-            Just (A.Array parts) -> forM_ (toList parts) $ \part -> case part of
+            Just (A.Array parts) -> forM_ (toList parts) $ \case
               A.Object partObj -> case KM.lookup "text" partObj of
                 Just (A.String txt) -> yield $ ContentDelta txt
                 _ -> pure ()
