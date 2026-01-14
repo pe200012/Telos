@@ -82,6 +82,9 @@ dependencies:
   # TUI
   - brick
   - vty
+  - vty-crossplatform
+  # FRP
+  - reactive-banana
 
 default-extensions:
   - BangPatterns
