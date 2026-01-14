@@ -49,15 +49,16 @@ initialAttrMap :: AttrMap
 initialAttrMap = attrMap Vty.defAttr [ ( attrName "timestamp", fg Vty.magenta ) ]
 
 -- | Draw the chat UI
-drawChatUI :: ChatState -> Widget Name
-drawChatUI st = B.border $ padAll 1 $ vBox [ historyWidget, inputWidget ]
+drawChatUI :: ChatState -> [ Widget Name ]
+drawChatUI st = [ ui ]
   where
+    ui = vBox [ historyWidget, B.hBorder, inputWidget ]
+
     -- History viewport (scrollable text display)
     historyWidget :: Widget Name
     historyWidget
-      = hLimit 60
-      $ vLimit 20
-      $ viewport HistoryViewport Vertical
+      = viewport HistoryViewport Vertical
+      $ padAll 1
       $ vBox (reverse $ map drawMessage (chatHistory st))
 
     -- Draw a single message
@@ -70,11 +71,11 @@ drawChatUI st = B.border $ padAll 1 $ vBox [ historyWidget, inputWidget ]
 
     -- Input box at the bottom
     inputWidget :: Widget Name
-    inputWidget = padTop (Pad 1) $ hLimit 60 $ renderEditor (txt . T.unlines) True (chatEditor st)
+    inputWidget = padAll 1 $ vLimit 3 $ renderEditor (txt . T.unlines) True (chatEditor st)
 
 -- | Event handler
 handleChatEvent :: BrickEvent Name KeyEnter -> EventM Name ChatState ()
-handleChatEvent (VtyEvent (Vty.EvKey (Vty.KChar 'd') [Vty.MCtrl])) = halt
+handleChatEvent (VtyEvent (Vty.EvKey (Vty.KChar 'd') [ Vty.MCtrl ])) = halt
 handleChatEvent (AppEvent KeyEnter) = do
   currentText <- use editorL
   let text = getEditContents currentText

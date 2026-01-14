@@ -1,0 +1,59 @@
+{
+  "$comment": "Telos Configuration File - place in ~/.config/telos/telos.json or ./telos.json",
+  
+  "model": "gpt-4o",
+  "small_model": "gpt-4o-mini",
+  
+  "providers": {
+    "openai": {
+      "api_key": "${OPENAI_API_KEY}",
+      "base_url": "https://api.openai.com/v1"
+    },
+    "anthropic": {
+      "api_key": "${ANTHROPIC_API_KEY}"
+    },
+    "copilot": {}
+  },
+  
+  "mcp": {
+    "filesystem": {
+      "name": "filesystem",
+      "type": "local",
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-filesystem"],
+      "enabled": true
+    },
+    "serena": {
+      "name": "serena",
+      "type": "remote",
+      "url": "http://localhost:8080",
+      "enabled": false
+    }
+  },
+  
+  "permissions": {
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "edit": "ask",
+    "write": "ask",
+    "bash": "ask",
+    "webfetch": "ask"
+  },
+  
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "threshold": 0.8
+  },
+  
+  "instructions": [
+    ".telos/AGENTS.md",
+    "~/.config/telos/global-instructions.md"
+  ],
+  
+  "max_iterations": 50,
+  "streaming_enabled": true,
+  "snapshot_enabled": true,
+  "log_level": "info"
+}

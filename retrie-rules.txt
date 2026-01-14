@@ -1,0 +1,10 @@
+'forall o x y. o .:? x >>= pure . fromMaybe y = (o .:? x) Data.Functor.<&> fromMaybe y'
+"System.IO.hIsEOF System.IO.stdin = isEOF"
+"forall x y. T.pack $ show x = show x"
+"forall op x y. \(x, y) -> op x y = uncurry op"
+"forall x. either (const x) id = fromRight x"
+"forall x. STM.atomically $ STM.readTVar x = readTVarIO x"
+"forall x. atomically $ readTVar x = readTVarIO x"
+"forall x y. fromMaybe x y = y ^. non x"
+"forall x y z. x ^. y ^. z = x ^. y . z"
+"forall x y. x .~ Just y = x ?~ y"

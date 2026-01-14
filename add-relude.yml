@@ -1,0 +1,9 @@
+id: add-relude-import
+language: haskell
+rule:
+  kind: header
+  pattern: module $$$REST
+fix: |
+  module $$$REST
+
+  import           Relude

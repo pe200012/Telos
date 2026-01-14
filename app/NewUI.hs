@@ -50,7 +50,7 @@ main = do
 
 -- | Draw application
 drawApp :: ChatState -> [ Widget Name ]
-drawApp = pure . drawChatUI
+drawApp = drawChatUI
 
 -- | Handle events and optionally trigger FRP events
 handleEvent :: (FRPEvent -> IO ()) -> BrickEvent Name KeyEnter -> EventM Name ChatState ()

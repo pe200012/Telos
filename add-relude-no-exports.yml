@@ -1,0 +1,15 @@
+id: add-relude-import-no-exports
+language: haskell
+rule:
+  kind: header
+  pattern: module $NAME where
+  not:
+    inside:
+      stopBy: end
+      rule:
+        has:
+          pattern: import Relude
+fix: |
+  module $NAME where
+
+  import           Relude

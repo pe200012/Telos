@@ -1,0 +1,204 @@
+```diff
+--- a/src/Telos/Tool/Types.hs
++++ b/src/Telos/Tool/Types.hs
+@@ -1,8 +1,10 @@
+ module Telos.Tool.Types
+   ( ToolExecutor
++  , ToolExecutorType(..)
+   , ToolResult(..)
+   , trSuccess
+   , trOutput
++  , mkToolResult
+   , BuiltinTool(..)
+   , btTool
+   , btExecutor
+@@ -30,6 +32,12 @@ data ToolResult = ToolResult { _trSuccess :: Bool, _trOutput :: Text }
+ 
+ makeLenses ''ToolResult
+ 
++mkToolResult :: Bool -> Text -> ToolResult
++mkToolResult = ToolResult
++
++-- | Simple tool executor that only needs ToolContext
++type ToolExecutor = ToolContext -> Value -> IO ToolResult
++
+ data FileReadInfo = FileReadInfo { _friReadTime :: UTCTime, _friModTime :: Maybe UTCTime }
+   deriving stock ( Eq, Show )
+ 
+@@ -56,7 +64,12 @@ wasFileRead ctx path = Map.member path <$> readTVarIO (_tcReadFiles ctx)
+ getFileReadTime :: ToolContext -> FilePath -> IO (Maybe FileReadInfo)
+ getFileReadTime ctx path = Map.lookup path <$> readTVarIO (_tcReadFiles ctx)
+ 
+-type ToolExecutor = ToolContext -> Value -> IO ToolResult
++-- | Executor type that supports both simple and agent-aware tools
++-- AgentExecutor will be used by tools like 'task' that need to spawn subagents
++data ToolExecutorType
++  = SimpleExecutor ToolExecutor
++  | AgentExecutor  -- Placeholder: actual implementation requires AgentContext
++  deriving stock ( Generic )
+ 
+-data BuiltinTool = BuiltinTool { _btTool :: Tool, _btExecutor :: ToolExecutor }
++data BuiltinTool = BuiltinTool { _btTool :: Tool, _btExecutor :: ToolExecutorType }
+ 
+ makeLenses ''BuiltinTool
+```
+
+```diff
+--- a/src/Telos/Tool/Registry.hs
++++ b/src/Telos/Tool/Registry.hs
+@@ -18,6 +18,7 @@ import           Telos.Tool.Glob  ( globTool )
+ import           Telos.Tool.Grep  ( grepTool )
+ import           Telos.Tool.Read  ( readTool )
+ import           Telos.Tool.Types ( BuiltinTool(..)
++                                  , ToolExecutorType(..)
+                                   , ToolContext
+                                   , ToolResult(..)
+                                   , btExecutor
+@@ -46,5 +47,7 @@ builtinToolList = map (^. btTool) (Map.elems builtinTools)
+ 
+ executeBuiltinTool :: ToolContext -> Text -> Value -> IO (Maybe ToolResult)
+ executeBuiltinTool ctx name args = case getBuiltinTool name of
+   Nothing -> pure Nothing
+-  Just bt -> Just <$> (bt ^. btExecutor) ctx args
++  Just bt -> case bt ^. btExecutor of
++    SimpleExecutor exec -> Just <$> exec ctx args
++    AgentExecutor -> pure $ Just $ ToolResult False "Agent executor not available in this context"
+```
+
+```diff
+--- a/src/Telos/Tool/Bash.hs
++++ b/src/Telos/Tool/Bash.hs
+@@ -16,7 +16,7 @@ import           Relude
+ 
+ import           Telos.Core.Types ( Tool, makeTool, toolDescription )
+ import           Telos.Tool.Types ( BuiltinTool(..)
+-                                  , ToolContext
++                                  , ToolExecutorType(..), ToolContext
+                                   , ToolResult(..)
+                                   )
+ 
+@@ -24,7 +24,7 @@ bashTool :: BuiltinTool
+ bashTool = BuiltinTool
+   { _btTool = makeTool "bash" inputSchema
+             & toolDescription ?~ description
+-  , _btExecutor = executeBash
++  , _btExecutor = SimpleExecutor executeBash
+   }
+   where
+     description :: Text
+```
+
+```diff
+--- a/src/Telos/Tool/Read.hs
++++ b/src/Telos/Tool/Read.hs
+@@ -18,7 +18,7 @@ import           Relude
+ 
+ import           Telos.Core.Types    ( Tool, makeTool, toolDescription )
+ import           Telos.Tool.Types    ( BuiltinTool(..)
+-                                     , ToolContext
++                                     , ToolExecutorType(..), ToolContext
+                                      , ToolResult(..)
+                                      , markFileRead
+                                      )
+@@ -27,7 +27,7 @@ readTool :: BuiltinTool
+ readTool = BuiltinTool
+   { _btTool = makeTool "read" inputSchema
+             & toolDescription ?~ description
+-  , _btExecutor = executeRead
++  , _btExecutor = SimpleExecutor executeRead
+   }
+   where
+     description :: Text
+```
+
+```diff
+--- a/src/Telos/Tool/Write.hs
++++ b/src/Telos/Tool/Write.hs
+@@ -17,7 +17,7 @@ import           Relude
+ 
+ import           Telos.Core.Types ( Tool, makeTool, toolDescription )
+ import           Telos.Tool.Types ( BuiltinTool(..)
+-                                  , ToolContext
++                                  , ToolExecutorType(..), ToolContext
+                                   , ToolResult(..)
+                                   )
+ 
+@@ -25,7 +25,7 @@ writeTool :: BuiltinTool
+ writeTool = BuiltinTool
+   { _btTool = makeTool "write" inputSchema
+             & toolDescription ?~ description
+-  , _btExecutor = executeWrite
++  , _btExecutor = SimpleExecutor executeWrite
+   }
+   where
+     description :: Text
+```
+
+```diff
+--- a/src/Telos/Tool/Edit.hs
++++ b/src/Telos/Tool/Edit.hs
+@@ -17,7 +17,7 @@ import           Relude
+ 
+ import           Telos.Core.Types ( Tool, makeTool, toolDescription )
+ import           Telos.Tool.Types ( BuiltinTool(..)
+-                                  , ToolContext
++                                  , ToolExecutorType(..), ToolContext
+                                   , ToolResult(..)
+                                   )
+ 
+@@ -25,7 +25,7 @@ editTool :: BuiltinTool
+ editTool = BuiltinTool
+   { _btTool = makeTool "edit" inputSchema
+             & toolDescription ?~ description
+-  , _btExecutor = executeEdit
++  , _btExecutor = SimpleExecutor executeEdit
+   }
+   where
+     description :: Text
+```
+
+```diff
+--- a/src/Telos/Tool/Glob.hs
++++ b/src/Telos/Tool/Glob.hs
+@@ -16,7 +16,7 @@ import           Relude
+ 
+ import           Telos.Core.Types ( Tool, makeTool, toolDescription )
+ import           Telos.Tool.Types ( BuiltinTool(..)
+-                                  , ToolContext
++                                  , ToolExecutorType(..), ToolContext
+                                   , ToolResult(..)
+                                   )
+ 
+@@ -24,7 +24,7 @@ globTool :: BuiltinTool
+ globTool = BuiltinTool
+   { _btTool = makeTool "glob" inputSchema
+             & toolDescription ?~ description
+-  , _btExecutor = executeGlob
++  , _btExecutor = SimpleExecutor executeGlob
+   }
+   where
+     description :: Text
+```
+
+```diff
+--- a/src/Telos/Tool/Grep.hs
++++ b/src/Telos/Tool/Grep.hs
+@@ -18,7 +18,7 @@ import           Relude
+ 
+ import           Telos.Core.Types ( Tool, makeTool, toolDescription )
+ import           Telos.Tool.Types ( BuiltinTool(..)
+-                                  , ToolContext
++                                  , ToolExecutorType(..), ToolContext
+                                   , ToolResult(..)
+                                   )
+ 
+@@ -26,7 +26,7 @@ grepTool :: BuiltinTool
+ grepTool = BuiltinTool
+   { _btTool = makeTool "grep" inputSchema
+             & toolDescription ?~ description
+-  , _btExecutor = executeGrep
++  , _btExecutor = SimpleExecutor executeGrep
+   }
+   where
+     description :: Text
+```
