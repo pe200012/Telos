@@ -74,8 +74,7 @@ drawChatUI st = B.border $ padAll 1 $ vBox [ historyWidget, inputWidget ]
 
 -- | Event handler
 handleChatEvent :: BrickEvent Name KeyEnter -> EventM Name ChatState ()
-handleChatEvent (VtyEvent (Vty.EvKey (Vty.KChar 'q') [])) = halt
-handleChatEvent (VtyEvent (Vty.EvKey Vty.KEsc [])) = halt
+handleChatEvent (VtyEvent (Vty.EvKey (Vty.KChar 'd') [Vty.MCtrl])) = halt
 handleChatEvent (AppEvent KeyEnter) = do
   currentText <- use editorL
   let text = getEditContents currentText
