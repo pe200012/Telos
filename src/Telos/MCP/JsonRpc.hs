@@ -29,12 +29,11 @@ module Telos.MCP.JsonRpc
   , standardErrorCodes
   ) where
 
+import           Control.Lens         ( (^.), makeLenses )
+
 import           Data.Aeson
 import           Data.Aeson.Types     ( Parser )
 import qualified Data.ByteString.Lazy as BL
-
-import           Control.Lens           ( (^.) )
-import           Control.Lens        ( makeLenses )
 
 import           Relude
 

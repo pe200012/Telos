@@ -16,14 +16,12 @@ module Telos.Agent.Streaming
 import           Conduit
 
 import           Control.Concurrent.MVar ( isEmptyMVar )
+import           Control.Lens            ( (%~), (^.), makeLenses )
 
 import           Data.Aeson              ( Value(..), eitherDecodeStrict' )
 import qualified Data.IntMap.Strict      as IntMap
 import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as TE
-
-import           Control.Lens              ( (%~), (^.) )
-import           Control.Lens           ( makeLenses )
 
 import           Relude
 

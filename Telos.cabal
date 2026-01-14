@@ -124,6 +124,7 @@ library
     , async >=2.2
     , base >=4.7 && <5
     , base16-bytestring
+    , brick
     , bytestring
     , conduit >=1.3
     , conduit-extra
@@ -156,12 +157,93 @@ library
     , unordered-containers
     , uuid
     , vector
+    , vty
+    , yaml >=0.11
+  default-language: Haskell2010
+
+executable NewUI
+  main-is: NewUI.hs
+  other-modules:
+      Main
+      Paths_Telos
+  autogen-modules:
+      Paths_Telos
+  hs-source-dirs:
+      app
+  default-extensions:
+      BangPatterns
+      ConstraintKinds
+      DataKinds
+      DeriveAnyClass
+      DeriveFunctor
+      DeriveGeneric
+      DerivingStrategies
+      FlexibleContexts
+      FlexibleInstances
+      GADTs
+      GeneralizedNewtypeDeriving
+      LambdaCase
+      MultiParamTypeClasses
+      OverloadedStrings
+      PolyKinds
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TemplateHaskell
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      NoImplicitPrelude
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -main-is NewUI
+  build-depends:
+      Diff
+    , Glob
+    , Telos
+    , aeson >=2.0
+    , async >=2.2
+    , base >=4.7 && <5
+    , base16-bytestring
+    , brick
+    , bytestring
+    , conduit >=1.3
+    , conduit-extra
+    , containers
+    , cryptohash-sha256
+    , directory
+    , errors
+    , exceptions
+    , filepath
+    , http-client >=0.7
+    , http-client-tls
+    , http-conduit
+    , http-types
+    , lens
+    , lens-aeson
+    , mtl
+    , polysemy >=1.9
+    , process >=1.6
+    , random
+    , regex-tdfa
+    , relude
+    , safe
+    , stm >=2.5
+    , text
+    , time
+    , transformers
+    , typed-process
+    , unix
+    , unliftio
+    , unordered-containers
+    , uuid
+    , vector
+    , vty
     , yaml >=0.11
   default-language: Haskell2010
 
 executable Telos-exe
   main-is: Main.hs
   other-modules:
+      NewUI
       Paths_Telos
   autogen-modules:
       Paths_Telos
@@ -200,6 +282,7 @@ executable Telos-exe
     , async >=2.2
     , base >=4.7 && <5
     , base16-bytestring
+    , brick
     , bytestring
     , conduit >=1.3
     , conduit-extra
@@ -232,6 +315,7 @@ executable Telos-exe
     , unordered-containers
     , uuid
     , vector
+    , vty
     , yaml >=0.11
   default-language: Haskell2010
 
@@ -299,6 +383,7 @@ test-suite Telos-test
     , async >=2.2
     , base >=4.7 && <5
     , base16-bytestring
+    , brick
     , bytestring
     , conduit >=1.3
     , conduit-extra
@@ -335,5 +420,6 @@ test-suite Telos-test
     , unordered-containers
     , uuid
     , vector
+    , vty
     , yaml >=0.11
   default-language: Haskell2010

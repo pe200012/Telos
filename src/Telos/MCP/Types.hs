@@ -92,11 +92,10 @@ module Telos.MCP.Types
   , toolsListChanged
   ) where
 
+import           Control.Lens     ( (^.), makeLenses )
+
 import           Data.Aeson
 import           Data.Aeson.Types ( Parser )
-
-import           Control.Lens       ( (^.) )
-import           Control.Lens    ( makeLenses )
 
 import           Relude
 

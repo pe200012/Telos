@@ -24,17 +24,17 @@ module Telos.Tool.Types
   , FileAssertError(..)
   ) where
 
+import           Control.Lens     ( makeLenses )
+
 import           Data.Aeson       ( Value )
 import qualified Data.Map.Strict  as Map
 import           Data.Time        ( UTCTime, getCurrentTime )
 
-import           Control.Lens    ( makeLenses )
-
 import           Relude
 
-import           Telos.Core.Types ( Tool )
-
 import           System.Directory ( getModificationTime )
+
+import           Telos.Core.Types ( Tool )
 
 data ToolResult = ToolResult { _trSuccess :: Bool, _trOutput :: Text }
   deriving stock ( Eq, Show )
@@ -82,7 +82,7 @@ assertFileRead :: ToolContext -> FilePath -> IO (Either FileAssertError ())
 assertFileRead ctx path = do
   mInfo <- getFileReadTime ctx path
   case mInfo of
-    Nothing -> pure $ Left $ FileNotRead path
+    Nothing   -> pure $ Left $ FileNotRead path
     Just info -> do
       -- Check if file was modified since last read
       currentMtime <- getModificationTime path
@@ -116,4 +116,4 @@ makeLenses ''BuiltinTool
 runSimpleExecutor :: BuiltinTool -> Maybe ToolExecutor
 runSimpleExecutor bt = case _btExecutor bt of
   SimpleExecutor exec -> Just exec
-  _                   -> Nothing
+  _ -> Nothing

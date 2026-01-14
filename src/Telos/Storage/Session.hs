@@ -12,14 +12,13 @@ module Telos.Storage.Session
   ) where
 
 import           Control.Exception          ( IOException, catch, evaluate )
+import           Control.Lens               ( (^.), non )
 
 import qualified Data.Aeson                 as Aeson
 import qualified Data.ByteString.Lazy       as BL
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Text                  as T
 import           Data.Time                  ( getCurrentTime )
-
-import           Control.Lens                 ( (^.), non )
 
 import           Relude
 

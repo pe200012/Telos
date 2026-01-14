@@ -18,15 +18,13 @@ module Telos.LLM.Streaming
 
 import           Conduit
 
+import           Control.Lens             ( (?~), (^.), at, makeLenses, non )
+
 import           Data.Aeson               ( Value(..), eitherDecode )
 import qualified Data.ByteString.Lazy     as BL
 import qualified Data.Map.Strict          as Map
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as TE
-
-import           Control.Lens               ( (^.), non )
-import           Control.Lens           ( (?~), at )
-import           Control.Lens            ( makeLenses )
 
 import           Relude
 

@@ -17,12 +17,11 @@ module Telos.MCP.Transport.StdIO
 
 import           Control.Concurrent.MVar    ( withMVar )
 import           Control.Exception          ( try )
+import           Control.Lens               ( makeLenses )
 
 import           Data.Aeson                 ( FromJSON, ToJSON, eitherDecode, encode )
 import qualified Data.ByteString.Lazy       as BL
 import qualified Data.ByteString.Lazy.Char8 as BL8
-
-import           Control.Lens              ( makeLenses )
 
 import           Relude
 

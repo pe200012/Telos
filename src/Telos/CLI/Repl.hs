@@ -20,83 +20,89 @@ module Telos.CLI.Repl
   , rsSnapshotConfig
   ) where
 
-import           Control.Exception       ( IOException, catch )
+import           Control.Exception        ( IOException, catch )
+import           Control.Lens             ( (.~), (?~), (^.) )
 
-import qualified Data.Text               as T
-import qualified Data.Text.IO            as TIO
-import           Data.Time               ( defaultTimeLocale, formatTime, getCurrentTime )
-
-import           Control.Lens              ( (.~), (?~), (^.) )
+import qualified Data.Text                as T
+import qualified Data.Text.IO             as TIO
+import           Data.Time                ( defaultTimeLocale, formatTime, getCurrentTime )
 
 import           Relude
 
-import           System.Directory        ( doesDirectoryExist, getCurrentDirectory )
-import           System.IO               ( hFlush, stdout )
-import           System.Info             ( os )
+import           System.Directory         ( doesDirectoryExist, getCurrentDirectory )
+import           System.IO                ( hFlush, stdout )
+import           System.Info              ( os )
 
-import           Telos.Agent.Config      ( acMaxIterations, acPruneConfig, acPromptConfig, makeAgentConfig )
-import           Telos.Agent.Context     ( AgentContext
-                                         , clearHistory
-                                         , ctxConfig
-                                         , getHistory
-                                         , getPruneState
-                                         , newAgentContext
-                                         , registerTools
-                                         , setHistory
-                                         )
-import           Telos.Agent.Loop        ( AgentResult(..) )
-import           Telos.CLI.Config        ( CliConfig
-                                         , ccMaxIterations
-                                         , ccMcpServers
-                                         , ccModel
-                                         , ccSnapshotEnabled
-                                         )
-import           Telos.Context.Transform ( estimateContextTokens )
-import           Telos.Context.Types     ( pcEnabled )
-import           Telos.Core.Types        ( Message, toolDescription, toolName )
-import           Telos.LLM.ModelLimits   ( getContextLength )
+import           Telos.Agent.Config       ( acMaxIterations
+                                          , acPromptConfig
+                                          , acPruneConfig
+                                          , makeAgentConfig
+                                          )
+import           Telos.Agent.Context      ( AgentContext
+                                          , clearHistory
+                                          , ctxConfig
+                                          , getHistory
+                                          , getPruneState
+                                          , newAgentContext
+                                          , registerTools
+                                          , setHistory
+                                          )
+import           Telos.Agent.Loop         ( AgentResult(..) )
+import           Telos.CLI.Config         ( CliConfig
+                                          , ccMaxIterations
+                                          , ccMcpServers
+                                          , ccModel
+                                          , ccSnapshotEnabled
+                                          )
+import           Telos.Context.Transform  ( estimateContextTokens )
+import           Telos.Context.Types      ( pcEnabled )
+import           Telos.Core.Types         ( Message, toolDescription, toolName )
+import           Telos.LLM.ModelLimits    ( getContextLength )
 import           Telos.LLM.Provider.Types ( Provider )
-import           Telos.MCP.ServerManager ( ServerManager
-                                         , ServerStatus(..)
-                                         , aggregateTools
-                                         , getServerStatus
-                                         , newServerManager
-                                         , registerServer
-                                         , shutdownAll
-                                         )
-import           Telos.Prompt.Types      ( makeSystemPromptConfig )
-import           Telos.Snapshot          ( SnapshotConfig
-                                         , initSnapshotConfig
-                                         , restoreFiles
-                                         , scEnabled
-                                         , takeSnapshot
-                                         )
-import           Telos.Storage.Session   ( createSession
-                                         , listSessions
-                                         , loadContextMessages
-                                         , saveContextMessages
-                                         )
-import           Telos.Storage.Types     ( SessionId(..), siId, siTitle, siUpdatedAt )
-import           Telos.Tool.Registry     ( builtinToolList )
+import           Telos.MCP.ServerManager  ( ServerManager
+                                          , ServerStatus(..)
+                                          , aggregateTools
+                                          , getServerStatus
+                                          , newServerManager
+                                          , registerServer
+                                          , shutdownAll
+                                          )
+import           Telos.Prompt.Types       ( makeSystemPromptConfig )
+import           Telos.Snapshot           ( SnapshotConfig
+                                          , initSnapshotConfig
+                                          , restoreFiles
+                                          , scEnabled
+                                          , takeSnapshot
+                                          )
+import           Telos.Storage.Session    ( createSession
+                                          , listSessions
+                                          , loadContextMessages
+                                          , saveContextMessages
+                                          )
+import           Telos.Storage.Types      ( SessionId(..), siId, siTitle, siUpdatedAt )
+import           Telos.Tool.Registry      ( builtinToolList )
 
 -- | Undo entry: snapshot hash and messages to restore
-data UndoEntry = UndoEntry
+data UndoEntry
+  = UndoEntry
   { ueSnapshot      :: Maybe Text      -- ^ Git tree hash before this turn
-  , ueMessages      :: [Message]       -- ^ Messages added in this turn (user + assistant)
-  , ueModifiedFiles :: [FilePath]      -- ^ Files modified in this turn (for targeted restore)
-  } deriving stock ( Eq, Show )
+  , ueMessages      :: [ Message ]       -- ^ Messages added in this turn (user + assistant)
+  , ueModifiedFiles :: [ FilePath ]      -- ^ Files modified in this turn (for targeted restore)
+  }
+  deriving stock ( Eq, Show )
 
 -- | REPL state
 data ReplState
-  = ReplState { rsConfig        :: CliConfig
-               , rsServerManager :: ServerManager
-               , rsAgentContext  :: AgentContext
-               , rsProvider      :: Provider
-               , rsSessionId     :: Maybe SessionId
-               , rsUndoStack     :: [UndoEntry]    -- Stack of undo entries
-               , rsRedoStack     :: [UndoEntry]    -- Stack of redo entries
-               , rsSnapshotConfig :: SnapshotConfig -- Snapshot configuration
-               }
+  = ReplState
+  { rsConfig         :: CliConfig
+  , rsServerManager  :: ServerManager
+  , rsAgentContext   :: AgentContext
+  , rsProvider       :: Provider
+  , rsSessionId      :: Maybe SessionId
+  , rsUndoStack      :: [ UndoEntry ]    -- Stack of undo entries
+  , rsRedoStack      :: [ UndoEntry ]    -- Stack of redo entries
+  , rsSnapshotConfig :: SnapshotConfig -- Snapshot configuration
+  }
 
 -- | Create new REPL state
 newReplState :: CliConfig -> Provider -> IO ReplState
@@ -117,15 +123,16 @@ newReplState config provider = do
   snapConfig <- initSnapshotConfig (config ^. ccSnapshotEnabled) cwd
 
   pure
-    $ ReplState { rsConfig        = config
-                , rsServerManager = serverMgr
-                , rsAgentContext  = agentCtx
-                , rsProvider      = provider
-                , rsSessionId     = Nothing
-                , rsUndoStack     = []
-                , rsRedoStack     = []
-                , rsSnapshotConfig = snapConfig
-                }
+    $ ReplState
+    { rsConfig         = config
+    , rsServerManager  = serverMgr
+    , rsAgentContext   = agentCtx
+    , rsProvider       = provider
+    , rsSessionId      = Nothing
+    , rsUndoStack      = []
+    , rsRedoStack      = []
+    , rsSnapshotConfig = snapConfig
+    }
 
 -- | REPL commands
 data ReplCommand
@@ -176,6 +183,7 @@ parseCommand input
   | otherwise = CmdMessage input
   where
     cmd = T.toLower $ T.strip input
+
     parseCount :: Text -> Int
     parseCount t = fromMaybe 1 $ readMaybe $ toString $ T.strip t
 
@@ -200,7 +208,7 @@ runRepl initialState runAgent = do
     -- Build prompt with context indicator
     buildPrompt :: ReplState -> IO Text
     buildPrompt replState = do
-      let ctx = rsAgentContext replState
+      let ctx       = rsAgentContext replState
           cliConfig = rsConfig replState
       history <- getHistory ctx
       pruneState <- getPruneState ctx
@@ -208,11 +216,12 @@ runRepl initialState runAgent = do
       let pruneConfig = config ^. acPruneConfig
           modelName = cliConfig ^. ccModel
           maxContext = getContextLength modelName
-          (rawTokens, effectiveTokens) = estimateContextTokens pruneState history
+          ( rawTokens, effectiveTokens ) = estimateContextTokens pruneState history
           -- Show: current/max or effective/max when DCP active
-          tokenStr = if pruneConfig ^. pcEnabled && rawTokens /= effectiveTokens
-            then formatTokenCount effectiveTokens <> "/" <> formatTokenCount maxContext
-            else formatTokenCount rawTokens <> "/" <> formatTokenCount maxContext
+          tokenStr
+            = if pruneConfig ^. pcEnabled && rawTokens /= effectiveTokens
+              then formatTokenCount effectiveTokens <> "/" <> formatTokenCount maxContext
+              else formatTokenCount rawTokens <> "/" <> formatTokenCount maxContext
       pure $ "telos [" <> tokenStr <> "]> "
 
     handleInput replState input = case parseCommand input of
@@ -277,16 +286,13 @@ runRepl initialState runAgent = do
         handleAgentResult result
         -- Calculate messages added in this turn
         historyAfter <- getHistory (rsAgentContext replState')
-        let newMsgs = drop (length historyBefore) historyAfter
+        let newMsgs   = drop (length historyBefore) historyAfter
             -- TODO: Track actual modified files from tool calls
-            undoEntry = UndoEntry { ueSnapshot = snapshot
-                                  , ueMessages = newMsgs
-                                  , ueModifiedFiles = []
-                                  }
+            undoEntry
+              = UndoEntry { ueSnapshot = snapshot, ueMessages = newMsgs, ueModifiedFiles = [] }
         -- Push to undo stack, clear redo stack (new action invalidates redo)
-        let replState'' = replState' { rsUndoStack = undoEntry : rsUndoStack replState'
-                                     , rsRedoStack = []
-                                     }
+        let replState''
+              = replState' { rsUndoStack = undoEntry : rsUndoStack replState', rsRedoStack = [] }
         replState''' <- autoSave replState''
         loop replState'''
 
@@ -444,7 +450,7 @@ handleNewCommand replState = do
 handleUndoCommand :: ReplState -> Int -> IO ReplState
 handleUndoCommand replState n = do
   let undoStack = rsUndoStack replState
-      toUndo = take n undoStack
+      toUndo    = take n undoStack
       remaining = drop n undoStack
 
   if null toUndo
@@ -457,7 +463,7 @@ handleUndoCommand replState n = do
       -- Remove messages from history
       history <- getHistory (rsAgentContext replState)
       let msgsToRemove = concatMap ueMessages toUndo
-          newHistory = take (length history - length msgsToRemove) history
+          newHistory   = take (length history - length msgsToRemove) history
       setHistory (rsAgentContext replState) newHistory
 
       -- Restore files from oldest snapshot in the undo batch
@@ -465,29 +471,27 @@ handleUndoCommand replState n = do
         -- Get the oldest snapshot (the state we want to restore to)
         let mOldestSnapshot = viaNonEmpty last toUndo >>= ueSnapshot
             -- Collect all modified files from undone turns
-            modifiedFiles = concatMap ueModifiedFiles toUndo
+            modifiedFiles   = concatMap ueModifiedFiles toUndo
         case mOldestSnapshot of
           Just treeHash -> do
             result <- if null modifiedFiles
-              then restoreFiles snapConfig treeHash ["."]  -- Restore all if no tracking
+              then restoreFiles snapConfig treeHash [ "." ]  -- Restore all if no tracking
               else restoreFiles snapConfig treeHash modifiedFiles
             case result of
               Left err -> TIO.putStrLn $ "Warning: Could not restore files: " <> err
               Right () -> pure ()
-          Nothing -> pure ()
+          Nothing       -> pure ()
 
       TIO.putStrLn $ "Undone " <> T.pack (show $ length toUndo) <> " turn(s)."
 
       -- Move undone entries to redo stack
-      pure replState { rsUndoStack = remaining
-                     , rsRedoStack = toUndo <> rsRedoStack replState
-                     }
+      pure replState { rsUndoStack = remaining, rsRedoStack = toUndo <> rsRedoStack replState }
 
 -- | Handle /redo command
 handleRedoCommand :: ReplState -> Int -> IO ReplState
 handleRedoCommand replState n = do
   let redoStack = rsRedoStack replState
-      toRedo = take n redoStack
+      toRedo    = take n redoStack
       remaining = drop n redoStack
 
   if null toRedo
@@ -497,21 +501,19 @@ handleRedoCommand replState n = do
     else do
       -- Add messages back to history
       history <- getHistory (rsAgentContext replState)
-      let msgsToAdd = concatMap ueMessages (reverse toRedo)
+      let msgsToAdd  = concatMap ueMessages (reverse toRedo)
           newHistory = history <> msgsToAdd
       setHistory (rsAgentContext replState) newHistory
 
       TIO.putStrLn $ "Redone " <> T.pack (show $ length toRedo) <> " turn(s)."
 
       -- Move redone entries back to undo stack
-      pure replState { rsRedoStack = remaining
-                     , rsUndoStack = toRedo <> rsUndoStack replState
-                     }
+      pure replState { rsRedoStack = remaining, rsUndoStack = toRedo <> rsUndoStack replState }
 
 -- | Handle /model command - list or change model
 handleModelCommand :: ReplState -> Maybe Text -> IO ReplState
 handleModelCommand replState mName = case mName of
-  Nothing -> do
+  Nothing       -> do
     -- List current model and available models
     let currentModel = rsConfig replState ^. ccModel
     TIO.putStrLn $ "Current model: " <> currentModel
@@ -529,7 +531,7 @@ handleModelCommand replState mName = case mName of
         TIO.putStrLn $ "Already using model: " <> currentModel
         pure replState
       else do
-        let newConfig = rsConfig replState & ccModel .~ newModel
+        let newConfig  = rsConfig replState & ccModel .~ newModel
             replState' = replState { rsConfig = newConfig }
         TIO.putStrLn $ "Model changed: " <> currentModel <> " -> " <> newModel
         let contextLimit = getContextLength newModel
@@ -597,7 +599,8 @@ printHelp = do
 -- | Format token count with k/M suffixes
 formatTokenCount :: Int -> Text
 formatTokenCount n
-  | n >= 1000000 = T.pack $ show (n `div` 1000000) <> "." <> show ((n `mod` 1000000) `div` 100000) <> "M"
-  | n >= 1000    = T.pack $ show (n `div` 1000) <> "." <> show ((n `mod` 1000) `div` 100) <> "k"
-  | otherwise    = T.pack $ show n
+  | n >= 1000000
+    = T.pack $ show (n `div` 1000000) <> "." <> show ((n `mod` 1000000) `div` 100000) <> "M"
+  | n >= 1000 = T.pack $ show (n `div` 1000) <> "." <> show ((n `mod` 1000) `div` 100) <> "k"
+  | otherwise = T.pack $ show n
 

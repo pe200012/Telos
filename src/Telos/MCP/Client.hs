@@ -22,6 +22,7 @@ module Telos.MCP.Client
 import           Control.Concurrent        ( ThreadId, forkIO, killThread )
 import qualified Control.Concurrent.STM    as STM
 import           Control.Exception         ( try )
+import           Control.Lens              ( (.~), (?~), (^.), makeLenses )
 
 import           Data.Aeson                ( FromJSON
                                            , Result(..)
@@ -33,9 +34,6 @@ import           Data.Aeson                ( FromJSON
 import qualified Data.ByteString.Lazy      as BL
 import qualified Data.Map.Strict           as Map
 import qualified Data.Text                 as T
-
-import           Control.Lens                ( (.~), (?~), (^.) )
-import           Control.Lens             ( makeLenses )
 
 import           Relude
 

@@ -26,23 +26,32 @@ module Telos.CLI.Config
   , loadTelosConfig
   ) where
 
-import           Data.Aeson
-import qualified Data.Map.Strict      as Map
+import           Control.Lens        ( (^.), makeLenses )
 
-import           Control.Lens           ( (^.) )
-import           Control.Lens        ( makeLenses )
+import           Data.Aeson
+import qualified Data.Map.Strict     as Map
 
 import           Relude
 
-import           System.Directory     ( XdgDirectory(XdgConfig), getXdgDirectory )
-import           System.FilePath      ( (</>) )
+import           System.Directory    ( XdgDirectory(XdgConfig), getXdgDirectory )
+import           System.FilePath     ( (</>) )
 
-import           Telos.Context.Types  ( PruneConfig(..), defaultPruneConfig )
-import qualified Telos.Config.Load    as Config
-import           Telos.Config.Types   ( TelosConfig, McpConfig(..), tcModel, tcMaxIterations
-                                      , tcMcp, tcStreamingEnabled, tcSnapshotEnabled
-                                      , tcCompaction, ccPrune
-                                      , mcCommand, mcArgs, mcEnv, mcWorkDir )
+import qualified Telos.Config.Load   as Config
+import           Telos.Config.Types  ( McpConfig(..)
+                                     , TelosConfig
+                                     , ccPrune
+                                     , mcArgs
+                                     , mcCommand
+                                     , mcEnv
+                                     , mcWorkDir
+                                     , tcCompaction
+                                     , tcMaxIterations
+                                     , tcMcp
+                                     , tcModel
+                                     , tcSnapshotEnabled
+                                     , tcStreamingEnabled
+                                     )
+import           Telos.Context.Types ( PruneConfig(..), defaultPruneConfig )
 
 data McpServerEntry
   = McpServerEntry { _mseName    :: Text
@@ -142,36 +151,35 @@ loadTelosConfig :: IO TelosConfig
 loadTelosConfig = Config.loadConfig
 
 fromTelosConfig :: TelosConfig -> CliConfig
-fromTelosConfig tc = CliConfig
-  { _ccModel = tc ^. tcModel
-  , _ccMaxIterations = tc ^. tcMaxIterations
-  , _ccSystemPrompt = Just "You are a helpful assistant with access to tools."
-  , _ccMcpServers = mcpToEntries (tc ^. tcMcp)
-  , _ccStreamingEnabled = tc ^. tcStreamingEnabled
-  , _ccSnapshotEnabled = tc ^. tcSnapshotEnabled
-  , _ccPruneConfig = compactionToPrune (tc ^. tcCompaction)
-  }
+fromTelosConfig tc
+  = CliConfig { _ccModel = tc ^. tcModel
+              , _ccMaxIterations = tc ^. tcMaxIterations
+              , _ccSystemPrompt = Just "You are a helpful assistant with access to tools."
+              , _ccMcpServers = mcpToEntries (tc ^. tcMcp)
+              , _ccStreamingEnabled = tc ^. tcStreamingEnabled
+              , _ccSnapshotEnabled = tc ^. tcSnapshotEnabled
+              , _ccPruneConfig = compactionToPrune (tc ^. tcCompaction)
+              }
   where
-    mcpToEntries :: Map Text McpConfig -> [McpServerEntry]
+    mcpToEntries :: Map Text McpConfig -> [ McpServerEntry ]
     mcpToEntries = Map.foldrWithKey toEntry []
-    
-    toEntry :: Text -> McpConfig -> [McpServerEntry] -> [McpServerEntry]
+
+    toEntry :: Text -> McpConfig -> [ McpServerEntry ] -> [ McpServerEntry ]
     toEntry name cfg acc = case cfg of
-      McpLocal{} -> McpServerEntry
-        { _mseName = name
+      McpLocal {}  -> McpServerEntry
+        { _mseName    = name
         , _mseCommand = toString (cfg ^. mcCommand)
-        , _mseArgs = map toString (cfg ^. mcArgs)
+        , _mseArgs    = map toString (cfg ^. mcArgs)
         , _mseWorkDir = toString <$> (cfg ^. mcWorkDir)
-        , _mseEnv = Just $ envToList (cfg ^. mcEnv)
-        } : acc
-      McpRemote{} -> acc
-    
-    envToList :: Map Text Text -> [(String, String)]
-    envToList = Map.foldrWithKey (\k v acc -> (toString k, toString v) : acc) []
-    
-    compactionToPrune tc' = defaultPruneConfig
-      { _pcEnabled = tc' ^. ccPrune
-      }
+        , _mseEnv     = Just $ envToList (cfg ^. mcEnv)
+        }
+        : acc
+      McpRemote {} -> acc
+
+    envToList :: Map Text Text -> [ ( String, String ) ]
+    envToList = Map.foldrWithKey (\k v acc -> ( toString k, toString v ) : acc) []
+
+    compactionToPrune tc' = defaultPruneConfig { _pcEnabled = tc' ^. ccPrune }
 
 loadConfig :: IO CliConfig
 loadConfig = fromTelosConfig <$> loadTelosConfig

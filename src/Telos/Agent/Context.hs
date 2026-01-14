@@ -24,15 +24,14 @@ module Telos.Agent.Context
   , modifyPruneState
   ) where
 
-import           Control.Lens         ( (^.) )
-import           Control.Lens      ( makeLenses )
+import           Control.Lens        ( (^.), makeLenses )
 
 import           Relude
 
-import           Telos.Agent.Config ( AgentConfig )
+import           Telos.Agent.Config  ( AgentConfig )
 import           Telos.Context.Types ( PruneState, emptyPruneState )
-import           Telos.Core.Types   ( Message, Tool )
-import           Telos.Tool.Types   ( ToolContext, newToolContext )
+import           Telos.Core.Types    ( Message, Tool )
+import           Telos.Tool.Types    ( ToolContext, newToolContext )
 
 data AgentContext
   = AgentContext

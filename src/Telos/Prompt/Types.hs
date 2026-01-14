@@ -17,7 +17,7 @@ module Telos.Prompt.Types
   , spcCurrentDate
   ) where
 
-import           Control.Lens    ( makeLenses )
+import           Control.Lens     ( makeLenses )
 
 import           Relude
 

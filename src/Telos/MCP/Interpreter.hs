@@ -1,6 +1,6 @@
 module Telos.MCP.Interpreter ( runMCPWithManager ) where
 
-import           Control.Lens              ( (.~), (^.), non )
+import           Control.Lens            ( (.~), (^.), non )
 
 import           Polysemy                ( Embed, Member, Sem, embed, interpret )
 

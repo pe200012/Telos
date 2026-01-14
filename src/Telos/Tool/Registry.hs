@@ -8,31 +8,31 @@ module Telos.Tool.Registry
   , taskToolName
   ) where
 
-import           Data.Aeson       ( Value )
-import qualified Data.Map.Strict  as Map
+import           Control.Lens          ( (^.) )
 
-import           Control.Lens       ( (^.) )
+import           Data.Aeson            ( Value )
+import qualified Data.Map.Strict       as Map
 
 import           Relude
 
 import           Telos.Context.Discard ( discardTool )
 import           Telos.Context.Extract ( extractTool )
-import           Telos.Core.Types ( Tool )
-import           Telos.Tool.Bash  ( bashTool )
-import           Telos.Tool.Edit  ( editTool )
-import           Telos.Tool.Glob  ( globTool )
-import           Telos.Tool.Grep  ( grepTool )
-import           Telos.Tool.Read  ( readTool )
-import           Telos.Tool.Task  ( taskTool )
-import           Telos.Tool.Types ( BuiltinTool(..)
-                                  , ToolExecutorType(..)
-                                  , ToolContext
-                                  , ToolResult(..)
-                                  , StreamCallback
-                                  , btExecutor
-                                  , btTool
-                                  )
-import           Telos.Tool.Write ( writeTool )
+import           Telos.Core.Types      ( Tool )
+import           Telos.Tool.Bash       ( bashTool )
+import           Telos.Tool.Edit       ( editTool )
+import           Telos.Tool.Glob       ( globTool )
+import           Telos.Tool.Grep       ( grepTool )
+import           Telos.Tool.Read       ( readTool )
+import           Telos.Tool.Task       ( taskTool )
+import           Telos.Tool.Types      ( BuiltinTool(..)
+                                       , StreamCallback
+                                       , ToolContext
+                                       , ToolExecutorType(..)
+                                       , ToolResult(..)
+                                       , btExecutor
+                                       , btTool
+                                       )
+import           Telos.Tool.Write      ( writeTool )
 
 -- | Name of the task tool (for special handling in Loop)
 taskToolName :: Text
@@ -60,7 +60,7 @@ isAgentTool :: Text -> Bool
 isAgentTool name = case getBuiltinTool name of
   Just bt -> case bt ^. btExecutor of
     AgentExecutor -> True
-    _             -> False
+    _ -> False
   Nothing -> False
 
 builtinToolList :: [ Tool ]
@@ -71,7 +71,7 @@ isStreamingTool :: Text -> Bool
 isStreamingTool name = case getBuiltinTool name of
   Just bt -> case bt ^. btExecutor of
     StreamingExecutor _ -> True
-    _                   -> False
+    _ -> False
   Nothing -> False
 
 -- | Execute a builtin tool with optional streaming callback
@@ -79,6 +79,7 @@ executeBuiltinTool :: StreamCallback -> ToolContext -> Text -> Value -> IO (Mayb
 executeBuiltinTool onChunk ctx name args = case getBuiltinTool name of
   Nothing -> pure Nothing
   Just bt -> case bt ^. btExecutor of
-    SimpleExecutor exec -> Just <$> exec ctx args
+    SimpleExecutor exec    -> Just <$> exec ctx args
     StreamingExecutor exec -> Just <$> exec onChunk ctx args
-    AgentExecutor -> pure $ Just $ ToolResult False "Agent executor not available in this context"
+    AgentExecutor
+      -> pure $ Just $ ToolResult False "Agent executor not available in this context"

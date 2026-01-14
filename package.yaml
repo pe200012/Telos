@@ -79,6 +79,9 @@ dependencies:
   - base16-bytestring
   # Erros and Exceptions
   - errors
+  # TUI
+  - brick
+  - vty
 
 default-extensions:
   - BangPatterns
@@ -127,6 +130,17 @@ executables:
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
+    dependencies:
+      - Telos
+  NewUI:
+    main: NewUI.hs
+    source-dirs: app
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+      - -main-is
+      - NewUI
     dependencies:
       - Telos
 

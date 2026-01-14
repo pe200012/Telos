@@ -61,23 +61,21 @@ module Telos.Core.Types
   , trmIsError
   ) where
 
-import           Data.Aeson     ( (.!=)
-                                , (.:)
-                                , (.:?)
-                                , (.=)
-                                , FromJSON(..)
-                                , ToJSON(..)
-                                , Value(..)
-                                , eitherDecode
-                                , encode
-                                , object
-                                , withObject
-                                , withText
-                                )
+import           Control.Lens ( (^.), Prism', makeLenses, non, prism' )
 
-import           Control.Lens     ( (^.), non )
-import           Control.Lens ( Prism', prism' )
-import           Control.Lens  ( makeLenses )
+import           Data.Aeson   ( (.!=)
+                              , (.:)
+                              , (.:?)
+                              , (.=)
+                              , FromJSON(..)
+                              , ToJSON(..)
+                              , Value(..)
+                              , eitherDecode
+                              , encode
+                              , object
+                              , withObject
+                              , withText
+                              )
 
 import           Relude
 

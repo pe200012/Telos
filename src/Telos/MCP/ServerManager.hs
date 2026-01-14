@@ -18,11 +18,9 @@ module Telos.MCP.ServerManager
 
 import qualified Control.Concurrent.STM as STM
 import           Control.Exception      ( try )
+import           Control.Lens           ( (.~), (^.), makeLenses )
 
 import qualified Data.Map.Strict        as Map
-
-import           Control.Lens             ( (.~), (^.) )
-import           Control.Lens          ( makeLenses )
 
 import           Relude
 

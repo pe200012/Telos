@@ -23,9 +23,9 @@ module Telos.Effect.MCP
   , resDescription
   ) where
 
-import           Data.Aeson       ( Value )
+import           Control.Lens     ( makeLenses )
 
-import           Control.Lens    ( makeLenses )
+import           Data.Aeson       ( Value )
 
 import           Polysemy         ( makeSem )
 

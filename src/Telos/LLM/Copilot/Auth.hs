@@ -30,29 +30,29 @@ module Telos.LLM.Copilot.Auth
   , oeDescription
   ) where
 
-import           Control.Concurrent        ( threadDelay )
-import           Control.Exception         ( try )
+import           Control.Concurrent         ( threadDelay )
+import           Control.Exception          ( try )
+import           Control.Lens               ( (^.), makeLenses )
+import           Control.Monad.Except       ( liftEither )
+import           Control.Monad.Trans.Except ( except, throwE )
 
 import           Data.Aeson
-import qualified Data.ByteString.Lazy      as BL
-import qualified Data.Text.Encoding        as TE
-import           Data.Time                 ( UTCTime, addUTCTime, diffUTCTime, getCurrentTime )
-import           Data.Time.Clock.POSIX     ( utcTimeToPOSIXSeconds )
-
-import           Control.Lens                ( (^.) )
-import           Control.Lens             ( makeLenses )
+import qualified Data.ByteString.Lazy       as BL
+import qualified Data.Text.Encoding         as TE
+import           Data.Time                  ( UTCTime, addUTCTime, diffUTCTime, getCurrentTime )
+import           Data.Time.Clock.POSIX      ( utcTimeToPOSIXSeconds )
 
 import           Network.HTTP.Client
-import           Network.HTTP.Types.Status ( statusCode )
+import           Network.HTTP.Types.Status  ( statusCode )
 
 import           Relude
 
-import           System.Directory          ( XdgDirectory(..)
-                                           , createDirectoryIfMissing
-                                           , doesFileExist
-                                           , getXdgDirectory
-                                           )
-import           System.FilePath           ( (</>) )
+import           System.Directory           ( XdgDirectory(..)
+                                            , createDirectoryIfMissing
+                                            , doesFileExist
+                                            , getXdgDirectory
+                                            )
+import           System.FilePath            ( (</>) )
 
 -- | GitHub OAuth Client ID for Copilot
 copilotClientId :: Text
@@ -177,40 +177,41 @@ newCopilotAuth mgr = do
 
 -- | Load saved token from disk
 loadSavedToken :: CopilotAuth -> IO (Either AuthError CopilotToken)
-loadSavedToken auth = do
-  tokenPath <- tokenFilePath
-  exists <- doesFileExist tokenPath
-  if not exists
-    then pure $ Left $ AuthDenied "No saved token found"
+loadSavedToken auth = runExceptT $ do
+  tokenPath <- liftIO tokenFilePath
+
+  -- 1. Check file existence
+  exists <- liftIO $ doesFileExist tokenPath
+  unless exists $ throwE $ AuthDenied "No saved token found"
+
+  -- 2. Read file (Catch IO Exceptions and map to AuthParseError)
+  content <- except . first (AuthParseError . show)
+    =<< liftIO (try @SomeException $ BL.readFile tokenPath)
+
+  -- 3. Decode JSON (Lift pure Either to ExceptT)
+  pt <- liftEither (first (AuthParseError . toText) (eitherDecode content))
+
+  now <- liftIO getCurrentTime
+
+  -- 4. Check expiration logic
+  if diffUTCTime (pt ^. ptExpiresAt) now > 300
+    then do
+      -- Branch A: Token is valid
+      let token = CopilotToken (pt ^. ptCopilotToken) (pt ^. ptExpiresAt)
+      liftIO $ atomically $ do
+        writeTVar (auth ^. caTokenState) (Authenticated token)
+        writeTVar (auth ^. caOAuthToken) (Just (pt ^. ptOAuthToken))
+      return token
     else do
-      result <- try $ BL.readFile tokenPath
-      case result of
-        Left (e :: SomeException)
-          -> pure $ Left $ AuthParseError $ "Failed to read token file: " <> show e
-        Right content -> case eitherDecode content of
-          Left err -> pure $ Left $ AuthParseError $ toText err
-          Right pt -> do
-            now <- getCurrentTime
-            -- Check if Copilot token is still valid (with 5 min buffer)
-            if diffUTCTime (pt ^. ptExpiresAt) now > 300
-              then do
-                -- Token still valid, restore state
-                let token = CopilotToken (pt ^. ptCopilotToken) (pt ^. ptExpiresAt)
-                atomically $ do
-                  writeTVar (auth ^. caTokenState) (Authenticated token)
-                  writeTVar (auth ^. caOAuthToken) (Just (pt ^. ptOAuthToken))
-                pure $ Right token
-              else do
-                -- Copilot token expired, try to refresh using OAuth token
-                atomically $ writeTVar (auth ^. caOAuthToken) (Just (pt ^. ptOAuthToken))
-                refreshResult <- getCopilotToken auth (pt ^. ptOAuthToken)
-                case refreshResult of
-                  Left err    -> pure $ Left err
-                  Right token -> do
-                    atomically $ writeTVar (auth ^. caTokenState) (Authenticated token)
-                    -- Save refreshed token
-                    saveToken auth (pt ^. ptOAuthToken) token
-                    pure $ Right token
+      -- Branch B: Token expired, refresh it
+      liftIO $ atomically $ writeTVar (auth ^. caOAuthToken) (Just (pt ^. ptOAuthToken))
+
+      -- Delegate refresh to getCopilotToken (lift existing IO Either)
+      token <- ExceptT $ getCopilotToken auth (pt ^. ptOAuthToken)
+
+      liftIO $ atomically $ writeTVar (auth ^. caTokenState) (Authenticated token)
+      liftIO $ saveToken auth (pt ^. ptOAuthToken) token
+      return token
 
 -- | Save token to disk
 saveToken :: CopilotAuth -> Text -> CopilotToken -> IO ()

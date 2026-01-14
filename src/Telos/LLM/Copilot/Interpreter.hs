@@ -13,10 +13,9 @@ module Telos.LLM.Copilot.Interpreter
 
 import           Conduit
 
-import qualified Data.Text                as T
+import           Control.Lens             ( (.~), (^.), makeLenses )
 
-import           Control.Lens               ( (.~), (^.) )
-import           Control.Lens            ( makeLenses )
+import qualified Data.Text                as T
 
 import           Network.HTTP.Client      ( Manager )
 

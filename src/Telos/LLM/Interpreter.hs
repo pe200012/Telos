@@ -4,15 +4,11 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Telos.LLM.Interpreter
-  ( runLLMWithCopilot
-  , runLLMWithProvider
-  , makeProviderInfo
-  ) where
+module Telos.LLM.Interpreter ( runLLMWithCopilot, runLLMWithProvider, makeProviderInfo ) where
 
 import           Conduit                  ( (.|), ConduitT, awaitForever, yield )
 
-import           Control.Lens               ( (.~), (^.) )
+import           Control.Lens             ( (.~), (^.) )
 
 import           Polysemy                 ( Embed, InterpreterFor, Member, embed, interpret )
 
@@ -28,31 +24,31 @@ import           Telos.Core.Types         ( AssistantMessage
                                           )
 import           Telos.Effect.LLM         ( LLM(..) )
 import           Telos.LLM.Copilot.Client ( ChatResponse(..)
-                                           , CopilotClient(..)
-                                           , Delta(..)
-                                           , ToolCallChunk(..)
-                                           , ccMaxTokens
-                                           , ccModel
-                                           , chChoices
-                                           , chDelta
-                                           , chMessage
-                                           , clConfig
-                                           , dContent
-                                           , dToolCalls
-                                           , fcArguments
-                                           , fcName
-                                           , sendChatRequest
-                                           , sendChatRequestStream
-                                           , tccFunction
-                                           , tccId
-                                           , tccIndex
-                                           )
+                                          , CopilotClient(..)
+                                          , Delta(..)
+                                          , ToolCallChunk(..)
+                                          , ccMaxTokens
+                                          , ccModel
+                                          , chChoices
+                                          , chDelta
+                                          , chMessage
+                                          , clConfig
+                                          , dContent
+                                          , dToolCalls
+                                          , fcArguments
+                                          , fcName
+                                          , sendChatRequest
+                                          , sendChatRequestStream
+                                          , tccFunction
+                                          , tccId
+                                          , tccIndex
+                                          )
 import           Telos.LLM.Provider.Types ( Provider(..)
-                                           , providerComplete
-                                           , providerCompleteStreaming
-                                           , providerModel
-                                           , providerName
-                                           )
+                                          , providerComplete
+                                          , providerCompleteStreaming
+                                          , providerModel
+                                          , providerName
+                                          )
 
 -- | Run LLM effect with Copilot backend
 runLLMWithCopilot :: Member (Embed IO) r => CopilotClient -> InterpreterFor LLM r

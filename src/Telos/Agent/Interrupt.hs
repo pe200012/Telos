@@ -10,8 +10,7 @@ module Telos.Agent.Interrupt
 
 import           Control.Concurrent.MVar ( isEmptyMVar )
 import           Control.Exception       ( bracket )
-
-import           Control.Lens              ( (^.) )
+import           Control.Lens            ( (^.) )
 
 import           Relude
 

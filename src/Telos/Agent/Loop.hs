@@ -14,12 +14,12 @@ module Telos.Agent.Loop
   , mcpToolToCoreTool
   ) where
 
+import           Control.Lens              ( (%~), (.~), (^.), (^?), _last, non )
+
 import           Data.Aeson                ( Value )
+import           Data.Aeson.Lens           ( _Integer, _String, key )
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
-
-import           Control.Lens                ( (%~), (.~), (^?), (^.), _last, non )
-import           Data.Aeson.Lens          ( key, _String, _Integer )
 
 import           Polysemy                  ( Embed, Members, Sem, embed )
 
@@ -41,12 +41,12 @@ import           Telos.Agent.Context       ( AgentContext(..)
                                            )
 import           Telos.Agent.Interrupt     ( checkInterrupted )
 import           Telos.Agent.Streaming     ( StreamConsumeResult(..), consumeStreamWithInterrupt )
-import           Telos.Agent.Subagent      ( SubagentConfig(..)
-                                           , SubagentResult(..)
-                                           , runSubagent
-                                           )
+import           Telos.Agent.Subagent      ( SubagentConfig(..), SubagentResult(..), runSubagent )
 import           Telos.Context.Strategy    ( computeParamKey, extractFilePath, runStrategies )
-import           Telos.Context.Transform   ( injectPrunableList, transformMessages, updateToolCache )
+import           Telos.Context.Transform   ( injectPrunableList
+                                           , transformMessages
+                                           , updateToolCache
+                                           )
 import           Telos.Context.Types       ( pcEnabled, psCurrentTurn )
 import qualified Telos.Core.Types          as Core
 import           Telos.Core.Types          ( _AssistantMsg )
@@ -336,13 +336,13 @@ executeToolCalls ctx toolCalls = do
                 pure $ Core.ToolResultMessage toolId tName content isError
 
     -- Update tool cache for DCP tracking
-    let (resultContent, isError) = case resultMsg of
-          Core.ToolResultMessage _ _ c e -> (c, e)
-          _                              -> ("", False)
+    let ( resultContent, isError ) = case resultMsg of
+          Core.ToolResultMessage _ _ c e -> ( c, e )
+          _ -> ( "", False )
         paramKey = computeParamKey tName toolArgs
         filePath = extractFilePath tName toolArgs
-    embed $ modifyPruneState ctx $ \ps ->
-      updateToolCache ps tName paramKey isError filePath resultContent
+    embed $ modifyPruneState ctx $ \ps
+      -> updateToolCache ps tName paramKey isError filePath resultContent
 
     pure resultMsg
 
@@ -376,19 +376,19 @@ executeTaskTool ctx toolId args = do
       mDesc   = args ^? key "description" . _String
 
   case mPrompt of
-    Nothing -> do
+    Nothing     -> do
       logWarn "Task tool missing required 'prompt' parameter"
       pure $ Core.ToolResultMessage toolId taskToolName "Missing required parameter: prompt" True
 
     Just prompt -> do
-      logInfo $ "Spawning subagent: " <> fromMaybe (T.take 50 prompt) mDesc
+      logInfo $ "Spawning subagent: " <> mDesc ^. non (T.take 50 prompt)
 
-      let cfg = SubagentConfig
-            { _sacPrompt        = prompt
-            , _sacMaxIterations = fromIntegral maxIter
-            , _sacMaxDepth      = 3
-            , _sacCurrentDepth  = 0  -- TODO: track depth through parent context
-            }
+      let cfg
+            = SubagentConfig { _sacPrompt        = prompt
+                             , _sacMaxIterations = fromIntegral maxIter
+                             , _sacMaxDepth      = 3
+                             , _sacCurrentDepth  = 0  -- TODO: track depth through parent context
+                             }
 
       -- Run subagent using the non-streaming loop
       result <- runSubagent subagentRunner ctx cfg
@@ -398,30 +398,29 @@ executeTaskTool ctx toolId args = do
           logInfo "Subagent completed successfully"
           pure $ Core.ToolResultMessage toolId taskToolName response False
 
-        SubagentError err -> do
+        SubagentError err        -> do
           logWarn $ "Subagent error: " <> err
           pure $ Core.ToolResultMessage toolId taskToolName ("Subagent error: " <> err) True
 
-        SubagentMaxIterations -> do
+        SubagentMaxIterations    -> do
           logWarn "Subagent hit max iterations"
-          pure $ Core.ToolResultMessage toolId taskToolName "Subagent reached maximum iterations" True
+          pure
+            $ Core.ToolResultMessage toolId taskToolName "Subagent reached maximum iterations" True
 
-        SubagentInterrupted -> do
+        SubagentInterrupted      -> do
           logInfo "Subagent was interrupted"
           pure $ Core.ToolResultMessage toolId taskToolName "Subagent was interrupted" True
 
 -- | Runner function for subagents (converts AgentResult to SubagentResult)
-subagentRunner :: Members '[ LLM, MCP, Logger, Embed IO ] r
-               => AgentContext
-               -> Text
-               -> Sem r SubagentResult
+subagentRunner
+  :: Members '[ LLM, MCP, Logger, Embed IO ] r => AgentContext -> Text -> Sem r SubagentResult
 subagentRunner ctx prompt = do
   result <- runAgentLoop ctx prompt
   pure $ case result of
-    AgentResponse txt     -> SubagentSuccess txt
-    AgentInterrupted _    -> SubagentInterrupted
-    AgentMaxIterations _  -> SubagentMaxIterations
-    AgentError err        -> SubagentError err
+    AgentResponse txt    -> SubagentSuccess txt
+    AgentInterrupted _   -> SubagentInterrupted
+    AgentMaxIterations _ -> SubagentMaxIterations
+    AgentError err       -> SubagentError err
 
 formatToolResult :: ToolResult -> Text
 formatToolResult result = T.intercalate "\n" $ map formatContentItem (result ^. trContent)

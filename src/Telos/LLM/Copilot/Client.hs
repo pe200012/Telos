@@ -56,6 +56,7 @@ module Telos.LLM.Copilot.Client
 import           Conduit
 
 import           Control.Exception           ( try )
+import           Control.Lens                ( (^.), Lens', makeLenses, non )
 
 import           Data.Aeson
 import qualified Data.ByteString             as BS
@@ -63,9 +64,6 @@ import qualified Data.ByteString.Char8       as BS8
 import qualified Data.ByteString.Lazy        as BL
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as TE
-
-import           Control.Lens                  ( (^.), Lens', non )
-import           Control.Lens               ( makeLenses )
 
 import           Network.HTTP.Client
 import           Network.HTTP.Client.Conduit ( bodyReaderSource )

@@ -4,40 +4,41 @@
 
 module Main ( main ) where
 
-import qualified Data.Text                as T
-import qualified Data.Text.IO             as TIO
+import           Control.Lens               ( (^.) )
 
-import           Network.HTTP.Client      ( newManager )
-import           Network.HTTP.Client.TLS  ( tlsManagerSettings )
+import qualified Data.Text                  as T
+import qualified Data.Text.IO               as TIO
 
-import           Polysemy                 ( runM )
-import           Polysemy.Error           ( runError )
+import           Network.HTTP.Client        ( newManager )
+import           Network.HTTP.Client.TLS    ( tlsManagerSettings )
+
+import           Polysemy                   ( runM )
+import           Polysemy.Error             ( runError )
 
 import           Relude
 
-import           Telos.Agent.Loop         ( AgentResult(..), runAgentLoop )
-import           Telos.CLI.Config         ( configFilePath, loadConfig, loadTelosConfig )
-import           Telos.Config.Types       ( tcModel )
-import           Control.Lens             ( (^.) )
-import           Telos.CLI.Repl           ( newReplState
-                                           , rsAgentContext
-                                           , rsProvider
-                                           , rsServerManager
-                                           , runRepl
-                                           )
-import           Telos.Core.Error         ( AppError )
-import           Telos.Effect.Logger.IO   ( runLoggerIO )
-import           Telos.LLM.Copilot.Auth   ( newCopilotAuth )
-import           Telos.LLM.Copilot.Client ( CopilotConfig(..), newCopilotClient )
-import           Telos.LLM.Interpreter    ( runLLMWithProvider )
+import           Telos.Agent.Loop           ( AgentResult(..), runAgentLoop )
+import           Telos.CLI.Config           ( configFilePath, loadConfig, loadTelosConfig )
+import           Telos.CLI.Repl             ( newReplState
+                                            , rsAgentContext
+                                            , rsProvider
+                                            , rsServerManager
+                                            , runRepl
+                                            )
+import           Telos.Config.Types         ( tcModel )
+import           Telos.Core.Error           ( AppError )
+import           Telos.Effect.Logger.IO     ( runLoggerIO )
+import           Telos.LLM.Copilot.Auth     ( newCopilotAuth )
+import           Telos.LLM.Copilot.Client   ( CopilotConfig(..), newCopilotClient )
+import           Telos.LLM.Interpreter      ( runLLMWithProvider )
 import           Telos.LLM.Provider.Copilot ( createCopilotProvider )
 import           Telos.LLM.Provider.Manager ( createProviderFromConfig )
-import           Telos.MCP.Interpreter    ( runMCPWithManager )
+import           Telos.MCP.Interpreter      ( runMCPWithManager )
 
 main :: IO ()
 main = do
   -- Load configuration
-  config      <- loadConfig
+  config <- loadConfig
   telosConfig <- loadTelosConfig
   cfgPath <- configFilePath
   TIO.putStrLn $ "Configuration: " <> T.pack cfgPath
@@ -55,13 +56,11 @@ main = do
       -- Fallback to Copilot for backward compatibility
       TIO.putStrLn "Falling back to GitHub Copilot..."
       auth <- newCopilotAuth httpManager
-      let copilotConfig = CopilotConfig
-            { _ccModel = telosConfig ^. tcModel
-            , _ccMaxTokens = Just 4096
-            }
+      let copilotConfig
+            = CopilotConfig { _ccModel = telosConfig ^. tcModel, _ccMaxTokens = Just 4096 }
           copilotClient = newCopilotClient auth httpManager copilotConfig
       createCopilotProvider copilotClient
-    Right p -> do
+    Right p  -> do
       TIO.putStrLn "Provider created successfully."
       pure p
 

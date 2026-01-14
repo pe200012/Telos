@@ -15,37 +15,31 @@ module Telos.Storage.Types
   , makeSessionInfo
   ) where
 
-import           Relude
-
-
-import           Data.Aeson        ( FromJSON, ToJSON )
-import           Data.Time         ( UTCTime, getCurrentTime )
-import qualified Data.UUID         as UUID
-import           Data.UUID.V4      ( nextRandom )
 import           Control.Lens     ( makeLenses )
 
-import           Telos.Core.Types  ( Message )
+import           Data.Aeson       ( FromJSON, ToJSON )
+import           Data.Time        ( UTCTime, getCurrentTime )
+import qualified Data.UUID        as UUID
+import           Data.UUID.V4     ( nextRandom )
+
+import           Relude
+
+import           Telos.Core.Types ( Message )
 
 newtype SessionId = SessionId { unSessionId :: Text }
   deriving stock ( Eq, Show )
   deriving newtype ( FromJSON, ToJSON )
 
-data SessionInfo = SessionInfo
-  { _siId        :: SessionId
-  , _siTitle     :: Text
-  , _siCreatedAt :: UTCTime
-  , _siUpdatedAt :: UTCTime
-  }
+data SessionInfo
+  = SessionInfo
+  { _siId :: SessionId, _siTitle :: Text, _siCreatedAt :: UTCTime, _siUpdatedAt :: UTCTime }
   deriving stock ( Eq, Show, Generic )
   deriving anyclass ( FromJSON, ToJSON )
 
 makeLenses ''SessionInfo
 
-data StoredMessage = StoredMessage
-  { _smIndex     :: Int
-  , _smMessage   :: Message
-  , _smTimestamp :: UTCTime
-  }
+data StoredMessage
+  = StoredMessage { _smIndex :: Int, _smMessage :: Message, _smTimestamp :: UTCTime }
   deriving stock ( Eq, Show, Generic )
   deriving anyclass ( FromJSON, ToJSON )
 
@@ -59,9 +53,4 @@ generateSessionId = do
 makeSessionInfo :: SessionId -> Text -> IO SessionInfo
 makeSessionInfo sid title = do
   now <- getCurrentTime
-  pure SessionInfo
-    { _siId        = sid
-    , _siTitle     = title
-    , _siCreatedAt = now
-    , _siUpdatedAt = now
-    }
+  pure SessionInfo { _siId = sid, _siTitle = title, _siCreatedAt = now, _siUpdatedAt = now }
