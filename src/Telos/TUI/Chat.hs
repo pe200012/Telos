@@ -13,7 +13,9 @@ module Telos.TUI.Chat
 import           Brick
 import qualified Brick.Widgets.Border       as B
 import qualified Brick.Widgets.Border.Style as BS
-import           Brick.Widgets.Edit
+import           Brick.Widgets.Edit (Editor, editAttr, editFocusedAttr,
+                                          editorText, getEditContents,
+                                          handleEditorEvent, renderEditor)
 
 import           Control.Lens               ( (.=), Lens', lens, use )
 
@@ -94,6 +96,11 @@ initialAttrMap
         `Vty.withStyle` Vty.bold
       )
     , ( attrName "message.text", fg Vty.white )
+    , ( attrName "editor.focused", fg Vty.white )
+    , ( attrName "editor.unfocused", fg Vty.brightBlack )
+      -- Brick's built-in editor attributes (used by renderEditor internally)
+    , ( editAttr, fg Vty.brightBlack )        -- Unfocused editor: gray text
+    , ( editFocusedAttr, fg Vty.white )       -- Focused editor: white text
     ]
 
 -- | Draw the chat UI
@@ -163,10 +170,14 @@ drawChatUI st = [ ui ]
           $ withAttr panelAttr
           $ padAll 1
           $ vLimit 3
-          $ renderEditor
-            (txt . T.unlines)
-            (currentMode st == InsertMode && focusPanel st == InputPanel)
-            (chatEditor st)
+          $ let editorTextAttr = if currentMode st == InsertMode && focusPanel st == InputPanel
+                                 then attrName "editor.focused"
+                                 else attrName "editor.unfocused"
+            in withAttr editorTextAttr
+             $ renderEditor
+               (txt . T.unlines)
+               (currentMode st == InsertMode && focusPanel st == InputPanel)
+               (chatEditor st)
 
     -- Status bar at bottom
     statusBar :: Widget Name
