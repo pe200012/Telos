@@ -5,3 +5,7 @@ compiler: ghc-9.12.2
 
 packages:
 - .
+
+extra-deps:
+- vendor/WEditorBrick/cabal/WEditor
+- vendor/WEditorBrick/cabal/WEditorBrick

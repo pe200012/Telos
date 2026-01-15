@@ -83,6 +83,8 @@ dependencies:
   - brick
   - vty
   - vty-crossplatform
+  - WEditor
+  - WEditorBrick
   # FRP
   - reactive-banana
 

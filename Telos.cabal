@@ -122,6 +122,8 @@ library
   build-depends:
       Diff
     , Glob
+    , WEditor
+    , WEditorBrick
     , aeson >=2.0
     , async >=2.2
     , base >=4.7 && <5
@@ -203,6 +205,8 @@ executable NewUI
       Diff
     , Glob
     , Telos
+    , WEditor
+    , WEditorBrick
     , aeson >=2.0
     , async >=2.2
     , base >=4.7 && <5
@@ -284,6 +288,8 @@ executable Telos-exe
       Diff
     , Glob
     , Telos
+    , WEditor
+    , WEditorBrick
     , aeson >=2.0
     , async >=2.2
     , base >=4.7 && <5
@@ -387,6 +393,8 @@ test-suite Telos-test
     , Glob
     , QuickCheck
     , Telos
+    , WEditor
+    , WEditorBrick
     , aeson
     , async >=2.2
     , base >=4.7 && <5
