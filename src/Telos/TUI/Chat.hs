@@ -124,9 +124,9 @@ drawChatUI st = [ ui ]
               then BS.unicodeBold
               else BS.unicode
         in 
-          withAttr borderAttr
-          $ withBorderStyle borderStyle
-          $ B.borderWithLabel (txt " History ")
+          withBorderStyle borderStyle
+          $ withAttr borderAttr
+          $ B.borderWithLabel (withAttr borderAttr $ txt " History ")
           $ withAttr panelAttr
           $ viewport HistoryViewport Vertical
           $ padAll 1
@@ -161,9 +161,9 @@ drawChatUI st = [ ui ]
               then BS.unicodeBold
               else BS.unicode
         in 
-          withAttr borderAttr
-          $ withBorderStyle borderStyle
-          $ B.borderWithLabel (txt " Input ")
+          withBorderStyle borderStyle
+          $ withAttr borderAttr
+          $ B.borderWithLabel (withAttr borderAttr $ txt " Input ")
           $ withAttr panelAttr
           $ padAll 1
           $ vLimit 3
@@ -176,6 +176,7 @@ drawChatUI st = [ ui ]
     statusBar :: Widget Name
     statusBar
       = withAttr (attrName "statusbar")
+      $ hLimit 1000  -- Force full width
       $ padLeftRight 1
       $ hBox [ modeWidget, txt " | ", txt $ "Focus: " <> case focusPanel st of
         HistoryPanel -> "History"
@@ -183,8 +184,8 @@ drawChatUI st = [ ui ]
 
     modeWidget :: Widget Name
     modeWidget = case currentMode st of
-      NormalMode -> withAttr (attrName "mode.normal") $ txt "-- NORMAL --"
-      InsertMode -> withAttr (attrName "mode.insert") $ txt "-- INSERT --"
+      NormalMode -> txt "-- NORMAL --"
+      InsertMode -> txt "-- INSERT --"
 
 -- | Event handler
 handleChatEvent :: BrickEvent Name KeyEnter -> EventM Name ChatState ()
