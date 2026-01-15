@@ -56,14 +56,20 @@ drawApp = drawChatUI
 handleEvent :: (FRPEvent -> IO ()) -> BrickEvent Name KeyEnter -> EventM Name ChatState ()
 handleEvent _trigger (VtyEvent (Vty.EvKey Vty.KEnter [])) = do
   cs <- get
-  let editorContent = getEditContents $ chatEditor cs
-  let currentText = case editorContent of
-        []      -> ""
-        (x : _) -> x
-  unless (T.null currentText) $ do
-    -- Trigger FRP submit event (for future use)
-    -- liftIO $ trigger SubmitInput
-    handleChatEvent (AppEvent KeyEnter)
+  -- Check if we're in Insert mode on Input panel - only then submit
+  if currentMode cs == InsertMode && focusPanel cs == InputPanel
+    then do
+      let editorContent = getEditContents $ chatEditor cs
+      let currentText = case editorContent of
+            []      -> ""
+            (x : _) -> x
+      unless (T.null currentText) $ do
+        -- Trigger FRP submit event (for future use)
+        -- liftIO $ trigger SubmitInput
+        handleChatEvent (AppEvent KeyEnter)
+    else 
+      -- Otherwise, let the normal event handler deal with it (mode switching)
+      handleChatEvent (VtyEvent (Vty.EvKey Vty.KEnter []))
 handleEvent _trigger e = do
   -- Pass other events through
   handleChatEvent e

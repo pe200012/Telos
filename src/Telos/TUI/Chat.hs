@@ -85,12 +85,8 @@ initialAttrMap
       -- Panel colors
     , ( attrName "panel.history.focused", bg Vty.black `Vty.withStyle` Vty.bold )
     , ( attrName "panel.history.unfocused", bg Vty.black )
-    , ( attrName "panel.input.focused"
-      , bg (Vty.rgbColor (20 :: Integer) (20 :: Integer) (30 :: Integer)) `Vty.withStyle` Vty.bold
-      )
-    , ( attrName "panel.input.unfocused"
-      , bg (Vty.rgbColor (15 :: Integer) (15 :: Integer) (20 :: Integer))
-      )
+    , ( attrName "panel.input.focused", bg Vty.black `Vty.withStyle` Vty.bold )
+    , ( attrName "panel.input.unfocused", bg Vty.black )
     , ( attrName "border.focused", fg Vty.cyan `Vty.withStyle` Vty.bold )
     , ( attrName "border.unfocused", fg Vty.brightBlack )
     , ( attrName "statusbar"
