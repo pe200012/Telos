@@ -86,6 +86,7 @@ library
       Telos.Tool.Task
       Telos.Tool.Types
       Telos.Tool.Write
+      Telos.TUI.BananaMain
       Telos.TUI.Chat
       Telos.TUI.FRP
   other-modules:

@@ -57,17 +57,19 @@ library
 
 
 library WEditor-internal
-  exposed-modules:     WEditor.Base,
-                       WEditor.Base.Char,
-                       WEditor.Base.Editor,
-                       WEditor.Base.Line,
-                       WEditor.Base.Para
-                       WEditor.Base.Parser,
-                       WEditor.Base.Viewer,
-                       WEditor.Document,
-                       WEditor.LineWrap,
-                       WEditor.Internal.Line,
-                       WEditor.Internal.Para
+  -- NOTE: Changed from exposed-modules to avoid HLS "ambiguous module" error
+  -- The main library re-exports these anyway
+  other-modules:        WEditor.Base,
+                        WEditor.Base.Char,
+                        WEditor.Base.Editor,
+                        WEditor.Base.Line,
+                        WEditor.Base.Para
+                        WEditor.Base.Parser,
+                        WEditor.Base.Viewer,
+                        WEditor.Document,
+                        WEditor.LineWrap,
+                        WEditor.Internal.Line,
+                        WEditor.Internal.Para
 
   other-extensions:    ExistentialQuantification,
                        FlexibleContexts,

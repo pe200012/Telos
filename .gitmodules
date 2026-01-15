@@ -1,0 +1,3 @@
+[submodule "vendor/brick"]
+	path = vendor/brick
+	url = http://github.com/jtdaugherty/brick

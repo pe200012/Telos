@@ -1,118 +1,124 @@
 {-# LANGUAGE RecursiveDo #-}
 
+-- |
+-- Module      : Telos.TUI.FRP
+-- Description : FRP network for Telos chat TUI using bricki-banana pattern
+-- License     : MIT
+--
+-- This module contains the reactive-banana FRP network definition for the
+-- Telos chat TUI. It uses the bricki-banana pattern to bypass Brick's event
+-- loop and maintain state purely in FRP Behaviors.
+
 module Telos.TUI.FRP
-  ( FRPEvent(..)
-  , FRPOutput(..)
-  , ScrollCmd(..)
-  , EditorCmd(..)
-  , buildFRPNetwork
+  ( buildChatNetwork
+  , handleEditorPure
   ) where
 
+import           Brick                      ( AttrMap, CursorLocation(..), Widget, cursorLocationName )
+import qualified Data.Text                  as T
 import qualified Graphics.Vty               as Vty
-
-import           Reactive.Banana
-import           Reactive.Banana.Frameworks
-
+import qualified Reactive.Banana            as Banana
+import           Reactive.Banana.Frameworks ( MomentIO, fromPoll, reactimate, AddHandler, Handler )
 import           Relude
+import           Telos.TUI.BananaMain       ( Next(..), brickNetwork )
+import           Telos.TUI.Chat
+import           WEditor.Base
+import           WEditor.LineWrap           ( breakExact )
+import           WEditorBrick.WrappingEditor
 
-import           Telos.TUI.Chat             ( ChatMessage(..), FocusPanel(..)
-                                            , MessageSender(..), Mode(..) )
+-- | Pure editor event handling (bypasses EventM)
+-- This is a pure version of handleEditor that doesn't require lookupExtent
+handleEditorPure :: Vty.Event -> WrappingEditor Char Name -> WrappingEditor Char Name
+handleEditorPure event = mapEditor action
+  where
+    action :: WrappingEditorAction Char
+    action = case event of
+      Vty.EvKey Vty.KBS []        -> editorBackspaceAction
+      Vty.EvKey Vty.KDel []       -> editorDeleteAction
+      Vty.EvKey Vty.KDown []      -> editorDownAction
+      Vty.EvKey Vty.KEnd []       -> editorEndAction
+      Vty.EvKey Vty.KEnter []     -> editorEnterAction
+      Vty.EvKey Vty.KHome []      -> editorHomeAction
+      Vty.EvKey Vty.KLeft []      -> editorLeftAction
+      Vty.EvKey Vty.KPageDown []  -> editorPageDownAction
+      Vty.EvKey Vty.KPageUp []    -> editorPageUpAction
+      Vty.EvKey Vty.KRight []     -> editorRightAction
+      Vty.EvKey Vty.KUp []        -> editorUpAction
+      Vty.EvKey Vty.KDown [Vty.MMeta] -> viewerShiftDownAction 1
+      Vty.EvKey Vty.KUp [Vty.MMeta]   -> viewerShiftUpAction 1
+      Vty.EvKey Vty.KHome [Vty.MMeta] -> viewerFillAction
+      Vty.EvKey (Vty.KChar c) [] | c `notElem` ("\t\r\n" :: String) -> editorAppendAction [c]
+      _ -> id
 
--- | Raw VTY events coming from Brick
-data FRPEvent
-  = FRPVtyEvent Vty.Event
-  | FRPTick  -- For future use (animations, polling)
-  deriving ( Eq, Show )
+-- | Build the complete FRP network for the chat TUI
+--
+-- This function sets up the entire reactive network including:
+-- - Vty event processing via brickNetwork
+-- - Mode and focus state management
+-- - Editor handling via IORef
+-- - Message history
+-- - Widget rendering
+-- - Cursor management
+--
+-- The network uses RecursiveDo to wire nextE, widgetsB, and cursorB
+-- into brickNetwork while defining them based on eventE from brickNetwork.
+buildChatNetwork ::
+  MVar ()  -- ^ MVar to signal when application should halt
+  -> IORef (WrappingEditor Char Name)  -- ^ IORef containing editor state
+  -> (AddHandler (), Handler ())  -- ^ Startup event handler pair
+  -> AttrMap  -- ^ Attribute map for rendering
+  -> MomentIO ()
+buildChatNetwork finMVar editorRef startup attrMap = mdo
+  -- ══════════════════════════════════════════════════════════════════
+  -- BRICK NETWORK SETUP
+  -- ══════════════════════════════════════════════════════════════════
 
--- | Scroll commands for viewport
-data ScrollCmd
-  = ScrollUp
-  | ScrollDown
-  | ScrollPageUp
-  | ScrollPageDown
-  | ScrollToEnd
-  deriving ( Eq, Show )
+  -- brickNetwork gives us events from Vty and handles rendering
+  -- Returns: (eventE :: Event (Maybe VtyEvent), finE :: Event (), suspendSetup)
+  (eventE, finE, _suspendSetup) <- brickNetwork
+    startup
+    nextE
+    widgetsB
+    cursorB
+    (pure attrMap)
 
--- | Editor commands
-data EditorCmd
-  = EditorClear
-  | EditorForward Vty.Event
-  | EditorMoveCursorEnd
-  deriving ( Eq, Show )
+  -- Extract just Vty events (ignore Nothing from startup)
+  let eVty :: Banana.Event Vty.Event
+      eVty = Banana.filterJust eventE
 
--- | Output from FRP network - commands to execute
-data FRPOutput = FRPOutput
-  { outMode        :: Mode
-  , outFocus       :: FocusPanel
-  , outHistory     :: [ChatMessage]
-  , outEditorCmd   :: Maybe EditorCmd
-  , outScrollCmd   :: Maybe ScrollCmd
-  , outShouldHalt  :: Bool
-  }
-  deriving ( Eq, Show )
+  -- ══════════════════════════════════════════════════════════════════
+  -- KEY EVENT CLASSIFICATION
+  -- ══════════════════════════════════════════════════════════════════
 
--- | Build FRP event network
--- Returns: (EventNetwork, Handler for output)
--- syncMVar is used to synchronize when outputHandler completes
-buildFRPNetwork
-  :: AddHandler FRPEvent
-  -> Handler FRPOutput
-  -> MVar ()
-  -> IO EventNetwork
-buildFRPNetwork inputHandler outputHandler syncMVar = compile $ mdo
-  -- Input event stream
-  eInput <- fromAddHandler inputHandler
-
-  -- Extract VTY events
-  let eVty :: Event Vty.Event
-      eVty = filterJust $ fmap getVtyEvent eInput
-
-      getVtyEvent (FRPVtyEvent e) = Just e
-      getVtyEvent _               = Nothing
-
-  -- Classify key events
-  let eKeyPress :: Event (Vty.Key, [Vty.Modifier])
-      eKeyPress = filterJust $ fmap extractKey eVty
+  let eKeyPress :: Banana.Event (Vty.Key, [Vty.Modifier])
+      eKeyPress = Banana.filterJust $ fmap extractKey eVty
 
       extractKey (Vty.EvKey k mods) = Just (k, mods)
-      extractKey _                  = Nothing
+      extractKey _ = Nothing
 
   -- Specific key events
-  let eQuit       = () <$ filterE (\(k, m) -> k == Vty.KChar 'd' && m == [Vty.MCtrl]) eKeyPress
-      eEnter      = () <$ filterE (\(k, m) -> k == Vty.KEnter && null m) eKeyPress
-      -- Ctrl+Enter for submit (Enter alone inserts newline via Brick's default)
-      eCtrlEnter  = () <$ filterE (\(k, m) -> k == Vty.KEnter && m == [Vty.MCtrl]) eKeyPress
-      eEsc        = () <$ filterE (\(k, m) -> k == Vty.KEsc && null m) eKeyPress
-      eArrowUp    = () <$ filterE (\(k, m) -> k == Vty.KUp && null m) eKeyPress
-      eArrowDown  = () <$ filterE (\(k, m) -> k == Vty.KDown && null m) eKeyPress
-      ePageUp     = () <$ filterE (\(k, m) -> k == Vty.KPageUp && null m) eKeyPress
-      ePageDown   = () <$ filterE (\(k, m) -> k == Vty.KPageDown && null m) eKeyPress
-
-      -- Other keys (for editor forwarding)
-      isSpecialKey (k, m) = k `elem` [ Vty.KEsc, Vty.KUp, Vty.KDown, Vty.KPageUp, Vty.KPageDown ]
-                         || (k == Vty.KEnter && m == [Vty.MCtrl])  -- Ctrl+Enter is submit, not forwarded
-      isQuitKey (k, m) = k == Vty.KChar 'd' && m == [Vty.MCtrl]
-      eOtherKey = filterE (\km -> not (isSpecialKey km) && not (isQuitKey km)) eKeyPress
+  let eQuit = () <$ Banana.filterE (\(k, m) -> k == Vty.KChar 'd' && m == [Vty.MCtrl]) eKeyPress
+      eEnter = () <$ Banana.filterE (\(k, m) -> k == Vty.KEnter && null m) eKeyPress
+      eCtrlEnter = () <$ Banana.filterE (\(k, m) -> k == Vty.KEnter && m == [Vty.MCtrl]) eKeyPress
+      eEsc = () <$ Banana.filterE (\(k, m) -> k == Vty.KEsc && null m) eKeyPress
+      eArrowUp = () <$ Banana.filterE (\(k, m) -> k == Vty.KUp && null m) eKeyPress
+      eArrowDown = () <$ Banana.filterE (\(k, m) -> k == Vty.KDown && null m) eKeyPress
 
   -- ══════════════════════════════════════════════════════════════════
   -- MODE BEHAVIOR
   -- ══════════════════════════════════════════════════════════════════
 
   -- Mode transitions:
-  -- NormalMode + Enter -> InsertMode
+  -- NormalMode + Enter (when InputPanel focused) -> InsertMode
   -- InsertMode + Esc -> NormalMode
-  -- (Ctrl+Enter for submit doesn't affect mode)
-  let eModeChange :: Event (Mode -> Mode)
-      eModeChange = unions
-        [ (\mode -> if mode == NormalMode then InsertMode else mode) <$ eEnter
+  let eModeChange :: Banana.Event (Mode -> Mode)
+      eModeChange = Banana.unions
+        [ (\mode -> if mode == NormalMode then InsertMode else mode)
+            <$ Banana.whenE ((== InputPanel) <$> bFocus) eEnter
         , const NormalMode <$ eEsc
         ]
 
-  bMode <- accumB NormalMode eModeChange
-
-  -- Compute the NEW mode at event time (for immediate output)
-  let eNewMode :: Event Mode
-      eNewMode = flip ($) <$> bMode <@> eModeChange
+  bMode <- Banana.accumB NormalMode eModeChange
 
   -- ══════════════════════════════════════════════════════════════════
   -- FOCUS BEHAVIOR
@@ -121,144 +127,100 @@ buildFRPNetwork inputHandler outputHandler syncMVar = compile $ mdo
   -- Focus transitions (only in NormalMode):
   -- NormalMode + Up -> HistoryPanel
   -- NormalMode + Down -> InputPanel
-  let eFocusChange :: Event (FocusPanel -> FocusPanel)
-      eFocusChange = unions
-        [ (\_ -> HistoryPanel) <$ whenE ((== NormalMode) <$> bMode) eArrowUp
-        , (\_ -> InputPanel)   <$ whenE ((== NormalMode) <$> bMode) eArrowDown
+  let eFocusChange :: Banana.Event (FocusPanel -> FocusPanel)
+      eFocusChange = Banana.unions
+        [ const HistoryPanel <$ Banana.whenE ((== NormalMode) <$> bMode) eArrowUp
+        , const InputPanel <$ Banana.whenE ((== NormalMode) <$> bMode) eArrowDown
         ]
 
-  bFocus <- accumB InputPanel eFocusChange
-
-  -- Compute the NEW focus at event time (for immediate output)
-  let eNewFocus :: Event FocusPanel
-      eNewFocus = flip ($) <$> bFocus <@> eFocusChange
+  bFocus <- Banana.accumB InputPanel eFocusChange
 
   -- ══════════════════════════════════════════════════════════════════
   -- HISTORY BEHAVIOR
   -- ══════════════════════════════════════════════════════════════════
 
   -- Submit happens when: InsertMode + InputPanel + Ctrl+Enter
-  let bCanSubmit = (&&) <$> ((== InsertMode) <$> bMode)
-                        <*> ((== InputPanel) <$> bFocus)
-      eSubmit = whenE bCanSubmit eCtrlEnter
+  let bCanSubmit = (&&) <$> ((== InsertMode) <$> bMode) <*> ((== InputPanel) <$> bFocus)
+      eSubmit = Banana.whenE bCanSubmit eCtrlEnter
 
-  -- We need to track editor content for submission
-  -- This is tricky because Brick's Editor is stateful
-  -- We'll use an accumulator for the text lines
-  -- EditorClear resets, other keys we track via external state
+  -- On submit, read editor content and add messages
+  -- History accumulates: new messages prepended
+  let eAddMessages :: Banana.Event ([ChatMessage] -> [ChatMessage])
+      eAddMessages = const [] <$ eSubmit  -- Will be replaced by reactimate side-effect
 
-  -- For now, we'll signal submission and let Brick handle the actual text extraction
-  -- The FRP network will add placeholder messages that get replaced by actual content
-
-  -- History accumulator: on submit, we add a placeholder that NewUI will fill
-  let eAddMessages :: Event ([ChatMessage] -> [ChatMessage])
-      eAddMessages = (\history ->
-        let userMsg = ChatMessage "<<PENDING>>" UserMessage
-            echoMsg = ChatMessage "<<PENDING_ECHO>>" AIMessage
-        in echoMsg : userMsg : history) <$ eSubmit
-
-  bHistory <- accumB [] eAddMessages
+  bHistory <- Banana.accumB [] eAddMessages
 
   -- ══════════════════════════════════════════════════════════════════
-  -- OUTPUT COMMANDS
+  -- EDITOR HANDLING (via IORef)
   -- ══════════════════════════════════════════════════════════════════
 
-  -- Helper to merge value events (prefer left on simultaneous)
-  let mergeEvents :: [Event a] -> Event a
-      mergeEvents = foldr (unionWith const) never
+  -- Forward key events to editor when in InsertMode + InputPanel
+  let bInEditorMode = (&&) <$> ((== InsertMode) <$> bMode) <*> ((== InputPanel) <$> bFocus)
 
-  -- Scroll commands
-  let eScrollCmd :: Event ScrollCmd
-      eScrollCmd = mergeEvents
-        -- InsertMode + HistoryPanel: arrows scroll
-        [ ScrollUp   <$ whenE (liftA2 (&&) ((== InsertMode) <$> bMode)
-                                           ((== HistoryPanel) <$> bFocus)) eArrowUp
-        , ScrollDown <$ whenE (liftA2 (&&) ((== InsertMode) <$> bMode)
-                                           ((== HistoryPanel) <$> bFocus)) eArrowDown
-        -- PageUp/PageDown in InsertMode + HistoryPanel
-        , ScrollPageUp   <$ whenE (liftA2 (&&) ((== InsertMode) <$> bMode)
-                                               ((== HistoryPanel) <$> bFocus)) ePageUp
-        , ScrollPageDown <$ whenE (liftA2 (&&) ((== InsertMode) <$> bMode)
-                                               ((== HistoryPanel) <$> bFocus)) ePageDown
-        -- Scroll to end after submit
-        , ScrollToEnd <$ eSubmit
+      -- Filter events that should go to editor
+      eEditorKeys = Banana.filterJust $ Banana.whenE bInEditorMode (Just <$> eVty)
+
+  -- Reactimate: update editor on key events (pure function, no EventM)
+  reactimate $ (\ev -> do
+    modifyIORef' editorRef (handleEditorPure ev)
+    ) <$> eEditorKeys
+
+  -- Reactimate: clear editor and update history on submit
+  reactimate $ (\_ -> do
+    editor <- readIORef editorRef
+    let editorLines = dumpEditor editor
+        inputText = T.unlines $ map T.pack editorLines
+    -- Clear editor
+    writeIORef editorRef $ newEditor breakExact InputField []
+    -- Note: history update would need a different mechanism
+    -- For now, just print
+    unless (T.null $ T.strip inputText) $
+      putStrLn $ "Submitted: " <> T.unpack inputText
+    ) <$> eSubmit
+
+  -- ══════════════════════════════════════════════════════════════════
+  -- WIDGETS BEHAVIOR
+  -- ══════════════════════════════════════════════════════════════════
+
+  -- Poll editor state from IORef on every event
+  -- fromPoll creates a Behavior that reads from IO on each network step
+  bEditor <- fromPoll (readIORef editorRef)
+
+  -- Build ChatState from behaviors
+  let bChatState :: Banana.Behavior ChatState
+      bChatState = ChatState
+        <$> bHistory
+        <*> bEditor
+        <*> bMode
+        <*> bFocus
+
+  -- Widgets behavior - drawChatUI is pure
+  let widgetsB :: Banana.Behavior [Widget Name]
+      widgetsB = drawChatUI <$> bChatState
+
+  -- Cursor behavior - show cursor when in insert mode on input panel
+  -- cursorLocationName returns Maybe n, so we need to handle that
+  let cursorB :: Banana.Behavior ([CursorLocation Name] -> Maybe (CursorLocation Name))
+      cursorB = (\mode focus ->
+        if mode == InsertMode && focus == InputPanel
+        then listToMaybe . filter (\curLoc -> cursorLocationName curLoc == Just InputField)
+        else const Nothing) <$> bMode <*> bFocus
+
+  -- ══════════════════════════════════════════════════════════════════
+  -- CONTROL FLOW
+  -- ══════════════════════════════════════════════════════════════════
+
+  -- Decide whether to redraw or halt
+  -- Use unionWith since Next is a Monoid (Halt wins over Redraw)
+  -- Note: eventE includes startup (Nothing) and Vty events (Just _)
+  -- We need to redraw on startup too, hence using eventE not just eVty
+  let nextE :: Banana.Event Next
+      nextE = foldr (Banana.unionWith (<>)) Banana.never
+        [ Halt <$ eQuit
+        , Redraw <$ eventE  -- Redraw on any event including startup
         ]
 
-  -- Editor commands
-  let eEditorCmd :: Event EditorCmd
-      eEditorCmd = mergeEvents
-        -- Submit clears editor
-        [ EditorClear <$ eSubmit
-        -- Move cursor to end when entering insert mode on input panel
-        , EditorMoveCursorEnd <$ whenE ((== InputPanel) <$> bFocus)
-                                       (whenE ((== NormalMode) <$> bMode) eEnter)
-        -- Forward Enter key to editor for newline (InsertMode + InputPanel)
-        , EditorForward (Vty.EvKey Vty.KEnter []) <$ whenE bCanSubmit eEnter
-        -- Forward other keys to editor in InsertMode + InputPanel
-        , EditorForward . (\(k, m) -> Vty.EvKey k m) <$>
-            whenE bCanSubmit eOtherKey
-        -- Also forward arrow keys to editor in InsertMode + InputPanel
-        , EditorForward (Vty.EvKey Vty.KUp []) <$
-            whenE (liftA2 (&&) ((== InsertMode) <$> bMode)
-                               ((== InputPanel) <$> bFocus)) eArrowUp
-        , EditorForward (Vty.EvKey Vty.KDown []) <$
-            whenE (liftA2 (&&) ((== InsertMode) <$> bMode)
-                               ((== InputPanel) <$> bFocus)) eArrowDown
-        ]
+  -- When FRP network finishes, signal main thread
+  reactimate $ putMVar finMVar () <$ finE
 
-  -- Halt signal
-  bShouldHalt <- stepper False (True <$ eQuit)
-
-  -- ══════════════════════════════════════════════════════════════════
-  -- COMBINE INTO OUTPUT
-  -- ══════════════════════════════════════════════════════════════════
-
-  -- The key insight: when we sample a Behavior with <@, we get the value BEFORE
-  -- the current event updates it. This causes a "one event delay" for commands.
-  --
-  -- Solution: Build output directly from events, embedding the NEW state values.
-
-  -- Output event when mode changes (with NEW mode value)
-  let eOutputModeChange :: Event FRPOutput
-      eOutputModeChange = (\focus history shouldHalt newMode ->
-                            FRPOutput newMode focus history Nothing Nothing shouldHalt)
-        <$> bFocus <*> bHistory <*> bShouldHalt
-        <@> eNewMode
-
-  -- Output event when focus changes (with NEW focus value)
-  let eOutputFocusChange :: Event FRPOutput
-      eOutputFocusChange = (\mode history shouldHalt newFocus ->
-                             FRPOutput mode newFocus history Nothing Nothing shouldHalt)
-        <$> bMode <*> bHistory <*> bShouldHalt
-        <@> eNewFocus
-
-  -- For each input event, we emit an output with the commands that THIS event triggered
-  let eOutputWithEditorCmd :: Event FRPOutput
-      eOutputWithEditorCmd = (\mode focus history shouldHalt cmd ->
-                               FRPOutput mode focus history (Just cmd) Nothing shouldHalt)
-        <$> bMode <*> bFocus <*> bHistory <*> bShouldHalt
-        <@> eEditorCmd
-
-      eOutputWithScrollCmd :: Event FRPOutput
-      eOutputWithScrollCmd = (\mode focus history shouldHalt cmd ->
-                               FRPOutput mode focus history Nothing (Just cmd) shouldHalt)
-        <$> bMode <*> bFocus <*> bHistory <*> bShouldHalt
-        <@> eScrollCmd
-
-      eOutputNoCmds :: Event FRPOutput
-      eOutputNoCmds = (\mode focus history shouldHalt ->
-                        FRPOutput mode focus history Nothing Nothing shouldHalt)
-        <$> bMode <*> bFocus <*> bHistory <*> bShouldHalt
-        <@ eInput
-
-      -- Combine: prefer events with NEW state values, then commands, then default
-      -- Priority: mode change > focus change > editor cmd > scroll cmd > no cmds
-      eOutput :: Event FRPOutput
-      eOutput = unionWith const eOutputModeChange
-              $ unionWith const eOutputFocusChange
-              $ unionWith const eOutputWithEditorCmd
-              $ unionWith const eOutputWithScrollCmd
-              $ eOutputNoCmds
-
-  -- React to output events
-  reactimate $ (\output -> outputHandler output >> putMVar syncMVar ()) <$> eOutput
+  pure ()
