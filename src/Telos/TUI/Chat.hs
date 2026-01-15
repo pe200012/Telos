@@ -124,9 +124,9 @@ drawChatUI st = [ ui ]
               then BS.unicodeBold
               else BS.unicode
         in 
-          withBorderStyle borderStyle
-          $ withAttr borderAttr
-          $ B.borderWithLabel (withAttr borderAttr $ txt " History ")
+          modifyDefAttr (const $ attrMapLookup borderAttr initialAttrMap)
+          $ withBorderStyle borderStyle
+          $ B.borderWithLabel (txt " History ")
           $ withAttr panelAttr
           $ viewport HistoryViewport Vertical
           $ padAll 1
@@ -161,9 +161,9 @@ drawChatUI st = [ ui ]
               then BS.unicodeBold
               else BS.unicode
         in 
-          withBorderStyle borderStyle
-          $ withAttr borderAttr
-          $ B.borderWithLabel (withAttr borderAttr $ txt " Input ")
+          modifyDefAttr (const $ attrMapLookup borderAttr initialAttrMap)
+          $ withBorderStyle borderStyle
+          $ B.borderWithLabel (txt " Input ")
           $ withAttr panelAttr
           $ padAll 1
           $ vLimit 3
