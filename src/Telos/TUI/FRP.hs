@@ -18,7 +18,7 @@ import           Brick                      ( AttrMap, CursorLocation(..), Widge
 import qualified Data.Text                  as T
 import qualified Graphics.Vty               as Vty
 import qualified Reactive.Banana            as Banana
-import           Reactive.Banana.Frameworks ( MomentIO, fromPoll, reactimate, AddHandler, Handler )
+import           Reactive.Banana.Frameworks ( MomentIO, reactimate, AddHandler, Handler )
 import           Relude
 import           Telos.TUI.BananaMain       ( Next(..), brickNetwork )
 import           Telos.TUI.Chat
@@ -64,11 +64,11 @@ handleEditorPure event = mapEditor action
 -- into brickNetwork while defining them based on eventE from brickNetwork.
 buildChatNetwork ::
   MVar ()  -- ^ MVar to signal when application should halt
-  -> IORef (WrappingEditor Char Name)  -- ^ IORef containing editor state
+  -> WrappingEditor Char Name  -- ^ Initial editor state
   -> (AddHandler (), Handler ())  -- ^ Startup event handler pair
   -> AttrMap  -- ^ Attribute map for rendering
   -> MomentIO ()
-buildChatNetwork finMVar editorRef startup attrMap = mdo
+buildChatNetwork finMVar initialEditor startup attrMap = mdo
   -- ══════════════════════════════════════════════════════════════════
   -- BRICK NETWORK SETUP
   -- ══════════════════════════════════════════════════════════════════
@@ -151,7 +151,7 @@ buildChatNetwork finMVar editorRef startup attrMap = mdo
   bHistory <- Banana.accumB [] eAddMessages
 
   -- ══════════════════════════════════════════════════════════════════
-  -- EDITOR HANDLING (via IORef)
+  -- EDITOR BEHAVIOR (Pure FRP - No IORef!)
   -- ══════════════════════════════════════════════════════════════════
 
   -- Forward key events to editor when in InsertMode + InputPanel
@@ -160,31 +160,34 @@ buildChatNetwork finMVar editorRef startup attrMap = mdo
       -- Filter events that should go to editor
       eEditorKeys = Banana.filterJust $ Banana.whenE bInEditorMode (Just <$> eVty)
 
-  -- Reactimate: update editor on key events (pure function, no EventM)
-  reactimate $ (\ev -> do
-    modifyIORef' editorRef (handleEditorPure ev)
-    ) <$> eEditorKeys
+      -- Editor update events (pure function application)
+      eEditorUpdate :: Banana.Event (WrappingEditor Char Name -> WrappingEditor Char Name)
+      eEditorUpdate = Banana.unions
+        [ handleEditorPure <$> eEditorKeys  -- Apply key to editor
+        , const (newEditor breakExact InputField []) <$ eSubmit  -- Clear on submit
+        ]
 
-  -- Reactimate: clear editor and update history on submit
-  reactimate $ (\_ -> do
-    editor <- readIORef editorRef
+  -- Accumulate editor state purely in FRP
+  bEditor <- Banana.accumB initialEditor eEditorUpdate
+
+  -- ══════════════════════════════════════════════════════════════════
+  -- SIDE EFFECTS (Submit handling)
+  -- ══════════════════════════════════════════════════════════════════
+
+  -- On submit, sample current editor and print
+  -- Note: We use <@> to sample the editor at the time of submit event
+  let eSubmitWithEditor = bEditor Banana.<@ eSubmit
+
+  reactimate $ (\editor -> do
     let editorLines = dumpEditor editor
         inputText = T.unlines $ map T.pack editorLines
-    -- Clear editor
-    writeIORef editorRef $ newEditor breakExact InputField []
-    -- Note: history update would need a different mechanism
-    -- For now, just print
     unless (T.null $ T.strip inputText) $
       putStrLn $ "Submitted: " <> T.unpack inputText
-    ) <$> eSubmit
+    ) <$> eSubmitWithEditor
 
   -- ══════════════════════════════════════════════════════════════════
   -- WIDGETS BEHAVIOR
   -- ══════════════════════════════════════════════════════════════════
-
-  -- Poll editor state from IORef on every event
-  -- fromPoll creates a Behavior that reads from IO on each network step
-  bEditor <- fromPoll (readIORef editorRef)
 
   -- Build ChatState from behaviors
   let bChatState :: Banana.Behavior ChatState

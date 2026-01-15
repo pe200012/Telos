@@ -16,15 +16,15 @@ main = do
   -- MVar to block main thread until application halts
   finMVar <- newEmptyMVar
 
-  -- IORef for editor state (pragmatic approach - editor is stateful)
-  editorRef <- newIORef $ newEditor breakExact InputField []
+  -- Initial editor state (pure, passed to FRP network)
+  let initialEditor = newEditor breakExact InputField []
 
   -- Startup event handler - brickNetwork expects (AddHandler (), Handler ()) tuple
   startup <- newAddHandler
 
   -- Compile FRP network
   network <- Banana.compile $ 
-    buildChatNetwork finMVar editorRef startup initialAttrMap
+    buildChatNetwork finMVar initialEditor startup initialAttrMap
 
   -- Start the network
   actuate network
