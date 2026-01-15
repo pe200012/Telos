@@ -53,11 +53,13 @@ data FRPOutput = FRPOutput
 
 -- | Build FRP event network
 -- Returns: (EventNetwork, Handler for output)
+-- syncMVar is used to synchronize when outputHandler completes
 buildFRPNetwork
   :: AddHandler FRPEvent
   -> Handler FRPOutput
+  -> MVar ()
   -> IO EventNetwork
-buildFRPNetwork inputHandler outputHandler = compile $ mdo
+buildFRPNetwork inputHandler outputHandler syncMVar = compile $ mdo
   -- Input event stream
   eInput <- fromAddHandler inputHandler
 
@@ -108,6 +110,10 @@ buildFRPNetwork inputHandler outputHandler = compile $ mdo
 
   bMode <- accumB NormalMode eModeChange
 
+  -- Compute the NEW mode at event time (for immediate output)
+  let eNewMode :: Event Mode
+      eNewMode = flip ($) <$> bMode <@> eModeChange
+
   -- ══════════════════════════════════════════════════════════════════
   -- FOCUS BEHAVIOR
   -- ══════════════════════════════════════════════════════════════════
@@ -122,6 +128,10 @@ buildFRPNetwork inputHandler outputHandler = compile $ mdo
         ]
 
   bFocus <- accumB InputPanel eFocusChange
+
+  -- Compute the NEW focus at event time (for immediate output)
+  let eNewFocus :: Event FocusPanel
+      eNewFocus = flip ($) <$> bFocus <@> eFocusChange
 
   -- ══════════════════════════════════════════════════════════════════
   -- HISTORY BEHAVIOR
@@ -203,19 +213,52 @@ buildFRPNetwork inputHandler outputHandler = compile $ mdo
   -- COMBINE INTO OUTPUT
   -- ══════════════════════════════════════════════════════════════════
 
-  -- Convert events to Maybe for output
-  bScrollCmd <- stepper Nothing (Just <$> eScrollCmd)
-  bEditorCmd <- stepper Nothing (Just <$> eEditorCmd)
+  -- The key insight: when we sample a Behavior with <@, we get the value BEFORE
+  -- the current event updates it. This causes a "one event delay" for commands.
+  --
+  -- Solution: Build output directly from events, embedding the NEW state values.
 
-  -- Build output behavior
-  let bOutput :: Behavior FRPOutput
-      bOutput = FRPOutput
-        <$> bMode
-        <*> bFocus
-        <*> bHistory
-        <*> bEditorCmd
-        <*> bScrollCmd
-        <*> bShouldHalt
+  -- Output event when mode changes (with NEW mode value)
+  let eOutputModeChange :: Event FRPOutput
+      eOutputModeChange = (\focus history shouldHalt newMode ->
+                            FRPOutput newMode focus history Nothing Nothing shouldHalt)
+        <$> bFocus <*> bHistory <*> bShouldHalt
+        <@> eNewMode
 
-  -- React to changes - emit output on any input event
-  reactimate $ outputHandler <$> bOutput <@ eInput
+  -- Output event when focus changes (with NEW focus value)
+  let eOutputFocusChange :: Event FRPOutput
+      eOutputFocusChange = (\mode history shouldHalt newFocus ->
+                             FRPOutput mode newFocus history Nothing Nothing shouldHalt)
+        <$> bMode <*> bHistory <*> bShouldHalt
+        <@> eNewFocus
+
+  -- For each input event, we emit an output with the commands that THIS event triggered
+  let eOutputWithEditorCmd :: Event FRPOutput
+      eOutputWithEditorCmd = (\mode focus history shouldHalt cmd ->
+                               FRPOutput mode focus history (Just cmd) Nothing shouldHalt)
+        <$> bMode <*> bFocus <*> bHistory <*> bShouldHalt
+        <@> eEditorCmd
+
+      eOutputWithScrollCmd :: Event FRPOutput
+      eOutputWithScrollCmd = (\mode focus history shouldHalt cmd ->
+                               FRPOutput mode focus history Nothing (Just cmd) shouldHalt)
+        <$> bMode <*> bFocus <*> bHistory <*> bShouldHalt
+        <@> eScrollCmd
+
+      eOutputNoCmds :: Event FRPOutput
+      eOutputNoCmds = (\mode focus history shouldHalt ->
+                        FRPOutput mode focus history Nothing Nothing shouldHalt)
+        <$> bMode <*> bFocus <*> bHistory <*> bShouldHalt
+        <@ eInput
+
+      -- Combine: prefer events with NEW state values, then commands, then default
+      -- Priority: mode change > focus change > editor cmd > scroll cmd > no cmds
+      eOutput :: Event FRPOutput
+      eOutput = unionWith const eOutputModeChange
+              $ unionWith const eOutputFocusChange
+              $ unionWith const eOutputWithEditorCmd
+              $ unionWith const eOutputWithScrollCmd
+              $ eOutputNoCmds
+
+  -- React to output events
+  reactimate $ (\output -> outputHandler output >> putMVar syncMVar ()) <$> eOutput

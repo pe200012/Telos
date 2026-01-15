@@ -27,16 +27,19 @@ main = do
   -- IORef to store latest FRP output for Brick to consume
   outputRef <- newIORef Nothing
 
+  -- MVar for synchronizing FRP output execution
+  syncMVar <- newEmptyMVar
+
   -- Build and start FRP network
   let outputHandler output = writeIORef outputRef (Just output)
-  network <- buildFRPNetwork frpInput outputHandler
+  network <- buildFRPNetwork frpInput outputHandler syncMVar
   actuate network
 
   -- Start Brick application
   let app
         = App { appDraw         = drawChatUI
               , appChooseCursor = showFirstCursor
-              , appHandleEvent  = handleEvent frpTrigger outputRef
+              , appHandleEvent  = handleEvent frpTrigger outputRef syncMVar
               , appStartEvent   = return ()
               , appAttrMap      = const initialAttrMap
               }
@@ -49,11 +52,15 @@ main = do
 handleEvent
   :: (FRPEvent -> IO ())
   -> IORef (Maybe FRPOutput)
+  -> MVar ()
   -> BrickEvent Name e
   -> EventM Name ChatState ()
-handleEvent frpTrigger outputRef (VtyEvent vtyEvent) = do
+handleEvent frpTrigger outputRef syncMVar (VtyEvent vtyEvent) = do
   -- Feed event to FRP network
   liftIO $ frpTrigger (FRPVtyEvent vtyEvent)
+
+  -- Wait for FRP output to be processed
+  liftIO $ void $ takeMVar syncMVar
 
   -- Read FRP output
   mOutput <- liftIO $ readIORef outputRef
@@ -63,7 +70,7 @@ handleEvent frpTrigger outputRef (VtyEvent vtyEvent) = do
     Just output -> applyFRPOutput output
 
 -- Ignore non-VTY events for now
-handleEvent _ _ _ = pass
+handleEvent _ _ _ _ = pass
 
 -- | Apply FRP output to Brick state
 applyFRPOutput :: FRPOutput -> EventM Name ChatState ()
