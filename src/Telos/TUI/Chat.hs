@@ -4,6 +4,7 @@ module Telos.TUI.Chat
   , KeyEnter(..)
   , Mode(..)
   , FocusPanel(..)
+  , MessageSender(..)
   , initialChatState
   , initialAttrMap
   , drawChatUI
@@ -41,8 +42,15 @@ data Mode = NormalMode | InsertMode
 data FocusPanel = HistoryPanel | InputPanel
   deriving ( Eq, Show )
 
+-- | Message sender
+data MessageSender = UserMessage | AIMessage
+  deriving ( Eq, Show )
+
 -- | Chat message
-data ChatMessage = ChatMessage { messageText :: Text, messageTime :: Text }
+data ChatMessage = ChatMessage
+  { messageText   :: Text
+  , messageSender :: MessageSender
+  }
   deriving ( Eq, Show )
 
 -- | Main application state
@@ -96,6 +104,7 @@ initialAttrMap
         `Vty.withStyle` Vty.bold
       )
     , ( attrName "message.text", fg Vty.white )
+    , ( attrName "message.user.bar", fg Vty.cyan )   -- User message: cyan bar
     , ( attrName "editor.focused", fg Vty.white )
     , ( attrName "editor.unfocused", fg Vty.brightBlack )
       -- Brick's built-in editor attributes (used by renderEditor internally)
@@ -140,10 +149,21 @@ drawChatUI st = [ ui ]
     drawMessage msg
       = padLeftRight 1
       $ padTop (Pad 1)
-      $ hBox
-        [ withAttr (attrName "timestamp") $ txt (messageTime msg)
-        , txt " "
-        , withAttr (attrName "message.text") $ txt (messageText msg)
+      $ case messageSender msg of
+          UserMessage ->
+            -- User: cyan bar prefix on each line
+            vBox $ map (drawUserLine . txt) (T.lines $ messageText msg)
+          AIMessage ->
+            -- AI: no bar, just text
+            withAttr (attrName "message.text")
+            $ txtWrap (messageText msg)
+
+    -- Draw a single line of user message with cyan bar
+    drawUserLine :: Widget Name -> Widget Name
+    drawUserLine content
+      = hBox
+        [ withAttr (attrName "message.user.bar") $ txt "│ "
+        , withAttr (attrName "message.text") content
         ]
 
     -- Input box at the bottom
@@ -243,9 +263,13 @@ handleChatEvent (AppEvent KeyEnter) = do
     unless (null text) $ do
       let inputText = T.unlines text
       unless (T.null inputText) $ do
-        let currentTime = ">>"
-        let newMessage = ChatMessage inputText currentTime
-        modify $ \s -> s { chatHistory = newMessage : chatHistory s }
+        -- Add user message to history
+        let userMessage = ChatMessage inputText UserMessage
+        -- Create echo response
+        let echoText = "Echo: " <> inputText
+        let echoMessage = ChatMessage echoText AIMessage
+        -- Add both messages to history (echo first so user sees response below)
+        modify $ \s -> s { chatHistory = echoMessage : userMessage : chatHistory s }
         -- Clear the editor
         editorL .= editorText InputField (Just 1) ""
         -- Scroll to bottom of history
