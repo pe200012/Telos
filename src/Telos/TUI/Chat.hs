@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE PackageImports #-}
 
 module Telos.TUI.Chat
   ( ChatState(..)
@@ -11,7 +12,7 @@ module Telos.TUI.Chat
   , initialAttrMap
   , drawChatUI
   -- Lenses
-  , editor
+  , chatEditor
   , chatHistory
   , currentMode
   , focusedPanel
@@ -22,8 +23,6 @@ module Telos.TUI.Chat
 import           Brick
 import qualified Brick.Widgets.Border       as B
 import qualified Brick.Widgets.Border.Style as BS
-import           Brick.Widgets.Edit         ( Editor, editAttr, editFocusedAttr
-                                            , editorText, renderEditor )
 
 import           Control.Lens               ( (^.), makeLenses )
 
@@ -32,6 +31,9 @@ import qualified Data.Text                  as T
 import qualified Graphics.Vty               as Vty
 
 import           Relude
+
+import           WEditorBrick.WrappingEditor
+import "WEditor" WEditor.LineWrap            ( BreakWords, breakExact )
 
 -- | Widget name type
 data Name = InputField | HistoryViewport
@@ -59,22 +61,22 @@ makeLenses ''ChatMessage
 
 -- | Main application state
 data ChatState = ChatState
-  { _chatHistory  :: [ChatMessage]
-  , _editor       :: Editor Text Name
-  , _currentMode  :: Mode
-  , _focusedPanel :: FocusPanel
+  { _chatHistory :: [ChatMessage]
+  , _chatEditor  :: WrappingEditor Char Name
+  , _currentMode :: Mode
+  , _focusedPanel  :: FocusPanel
   }
   deriving stock ( Show )
 makeLenses ''ChatState
 
 -- | Initial chat state with empty history
 initialChatState :: ChatState
-initialChatState = ChatState
-  { _chatHistory  = []
-  , _editor       = editorText InputField Nothing ""
-  , _currentMode  = NormalMode
-  , _focusedPanel = InputPanel
-  }
+initialChatState
+  = ChatState { _chatHistory = []
+              , _chatEditor  = newEditor (breakExact :: BreakWords Char) InputField []
+              , _currentMode = NormalMode
+              , _focusedPanel  = InputPanel
+              }
 
 -- | Initial attribute map
 initialAttrMap :: AttrMap
@@ -91,8 +93,6 @@ initialAttrMap = attrMap Vty.defAttr
   , ( attrName "statusbar", fg Vty.white `Vty.withStyle` Vty.bold `Vty.withBackColor` Vty.blue )
   , ( attrName "mode.normal", fg Vty.green )
   , ( attrName "mode.insert", fg Vty.yellow )
-  , ( editAttr, fg Vty.brightBlack )
-  , ( editFocusedAttr, fg Vty.white )
   ]
 
 -- | Draw the chat UI
@@ -154,9 +154,8 @@ drawChatUI st =
         $ vLimit 3
         $ withAttr editorTextAttr
         $ renderEditor
-          (txt . T.unlines)
           (st ^. currentMode == InsertMode && st ^. focusedPanel == InputPanel)
-          (st ^. editor)
+          (st ^. chatEditor)
 
     statusBar :: Widget Name
     statusBar = let
@@ -169,4 +168,4 @@ drawChatUI st =
       in withAttr (attrName "statusbar")
         $ hLimit 1000
         $ padLeftRight 1
-        $ hBox [ modeWidget, txt " | ", txt $ "Focus: " <> focusText, txt " | ", txt "Ctrl+D: Quit" ]
+        $ hBox [ modeWidget, txt " | ", txt $ "Focus: " <> focusText, txt " | ", txt "Ctrl+Enter: Submit | Ctrl+D: Quit" ]

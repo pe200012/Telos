@@ -1,10 +1,6 @@
 module NewUI ( main ) where
 
 import           Brick                       hiding ( zoom )
-import qualified Brick                       as Brick
-import           Brick.Widgets.Edit         ( editorText, getEditContents
-                                            , handleEditorEvent )
-
 import           Control.Lens               ( (.=), use, (^. ) )
 
 import qualified Data.Text                  as T
@@ -18,6 +14,9 @@ import           Relude
 
 import           Telos.TUI.Chat
 import           Telos.TUI.FRP
+
+import           WEditorBrick.WrappingEditor
+import           WEditor.LineWrap            ( breakExact )
 
 -- | Main application entry point
 main :: IO ()
@@ -80,13 +79,11 @@ applyFRPOutput output = do
 
    -- Handle editor commands
   case outEditorCmd output of
-    Just EditorInsertNewline -> do
-      Brick.zoom editor $ handleEditorEvent (VtyEvent (Vty.EvKey Vty.KEnter []))
     Just EditorClear -> do
       -- Get current text before clearing for message creation
-      currentEditor <- use editor
-      let editorContent = getEditContents currentEditor
-          inputText = T.unlines editorContent
+      currentEditor <- use chatEditor
+      let editorLines = dumpEditor currentEditor
+          inputText = T.unlines $ map T.pack editorLines
       -- Only add messages if there's actual content
       unless (T.null $ T.strip inputText) $ do
         -- Create actual messages (replacing FRP placeholders)
@@ -96,11 +93,17 @@ applyFRPOutput output = do
         -- Update history with real messages
         chatHistory .= echoMessage : userMessage : filter (not . isPending) (outHistory output)
        -- Clear editor
-      editor .= editorText InputField Nothing ""
+      chatEditor .= newEditor breakExact InputField []
     Just EditorMoveCursorEnd -> do
-      Brick.zoom editor $ handleEditorEvent (VtyEvent (Vty.EvKey Vty.KEnd []))
+      -- WrappingEditor: update extent to recalculate layout
+      currentEditor <- use chatEditor
+      updatedEditor <- updateEditorExtent currentEditor
+      chatEditor .= updatedEditor
     Just (EditorForward vtyEvent) -> do
-      Brick.zoom editor $ handleEditorEvent (VtyEvent vtyEvent)
+      -- Forward event to WrappingEditor
+      currentEditor <- use chatEditor
+      updatedEditor <- handleEditor currentEditor vtyEvent
+      chatEditor .= updatedEditor
     Nothing -> pass
 
   -- Handle scroll commands

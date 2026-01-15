@@ -35,8 +35,7 @@ data ScrollCmd
 
 -- | Editor commands
 data EditorCmd
-  = EditorInsertNewline
-  | EditorClear
+  = EditorClear
   | EditorForward Vty.Event
   | EditorMoveCursorEnd
   deriving ( Eq, Show )
@@ -79,7 +78,8 @@ buildFRPNetwork inputHandler outputHandler = compile $ mdo
   -- Specific key events
   let eQuit       = () <$ filterE (\(k, m) -> k == Vty.KChar 'd' && m == [Vty.MCtrl]) eKeyPress
       eEnter      = () <$ filterE (\(k, m) -> k == Vty.KEnter && null m) eKeyPress
-      eShiftEnter = () <$ filterE (\(k, m) -> k == Vty.KEnter && m == [Vty.MShift]) eKeyPress
+      -- Ctrl+Enter for submit (Enter alone inserts newline via Brick's default)
+      eCtrlEnter  = () <$ filterE (\(k, m) -> k == Vty.KEnter && m == [Vty.MCtrl]) eKeyPress
       eEsc        = () <$ filterE (\(k, m) -> k == Vty.KEsc && null m) eKeyPress
       eArrowUp    = () <$ filterE (\(k, m) -> k == Vty.KUp && null m) eKeyPress
       eArrowDown  = () <$ filterE (\(k, m) -> k == Vty.KDown && null m) eKeyPress
@@ -87,8 +87,8 @@ buildFRPNetwork inputHandler outputHandler = compile $ mdo
       ePageDown   = () <$ filterE (\(k, m) -> k == Vty.KPageDown && null m) eKeyPress
 
       -- Other keys (for editor forwarding)
-      isSpecialKey (k, _) = k `elem`
-        [ Vty.KEnter, Vty.KEsc, Vty.KUp, Vty.KDown, Vty.KPageUp, Vty.KPageDown ]
+      isSpecialKey (k, m) = k `elem` [ Vty.KEsc, Vty.KUp, Vty.KDown, Vty.KPageUp, Vty.KPageDown ]
+                         || (k == Vty.KEnter && m == [Vty.MCtrl])  -- Ctrl+Enter is submit, not forwarded
       isQuitKey (k, m) = k == Vty.KChar 'd' && m == [Vty.MCtrl]
       eOtherKey = filterE (\km -> not (isSpecialKey km) && not (isQuitKey km)) eKeyPress
 
@@ -99,6 +99,7 @@ buildFRPNetwork inputHandler outputHandler = compile $ mdo
   -- Mode transitions:
   -- NormalMode + Enter -> InsertMode
   -- InsertMode + Esc -> NormalMode
+  -- (Ctrl+Enter for submit doesn't affect mode)
   let eModeChange :: Event (Mode -> Mode)
       eModeChange = unions
         [ (\mode -> if mode == NormalMode then InsertMode else mode) <$ eEnter
@@ -126,10 +127,10 @@ buildFRPNetwork inputHandler outputHandler = compile $ mdo
   -- HISTORY BEHAVIOR
   -- ══════════════════════════════════════════════════════════════════
 
-  -- Submit happens when: InsertMode + InputPanel + Enter
+  -- Submit happens when: InsertMode + InputPanel + Ctrl+Enter
   let bCanSubmit = (&&) <$> ((== InsertMode) <$> bMode)
                         <*> ((== InputPanel) <$> bFocus)
-      eSubmit = whenE bCanSubmit eEnter
+      eSubmit = whenE bCanSubmit eCtrlEnter
 
   -- We need to track editor content for submission
   -- This is tricky because Brick's Editor is stateful
@@ -176,13 +177,13 @@ buildFRPNetwork inputHandler outputHandler = compile $ mdo
   -- Editor commands
   let eEditorCmd :: Event EditorCmd
       eEditorCmd = mergeEvents
-        -- Shift+Enter in InsertMode + InputPanel: insert newline
-        [ EditorInsertNewline <$ whenE bCanSubmit eShiftEnter
         -- Submit clears editor
-        , EditorClear <$ eSubmit
+        [ EditorClear <$ eSubmit
         -- Move cursor to end when entering insert mode on input panel
         , EditorMoveCursorEnd <$ whenE ((== InputPanel) <$> bFocus)
                                        (whenE ((== NormalMode) <$> bMode) eEnter)
+        -- Forward Enter key to editor for newline (InsertMode + InputPanel)
+        , EditorForward (Vty.EvKey Vty.KEnter []) <$ whenE bCanSubmit eEnter
         -- Forward other keys to editor in InsertMode + InputPanel
         , EditorForward . (\(k, m) -> Vty.EvKey k m) <$>
             whenE bCanSubmit eOtherKey
