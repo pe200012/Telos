@@ -82,6 +82,22 @@ initialAttrMap
     , ( attrName "focused", Vty.withStyle Vty.currentAttr Vty.bold )
     , ( attrName "mode.normal", fg Vty.cyan )
     , ( attrName "mode.insert", fg Vty.green )
+      -- Panel colors
+    , ( attrName "panel.history.focused", bg Vty.black `Vty.withStyle` Vty.bold )
+    , ( attrName "panel.history.unfocused", bg Vty.black )
+    , ( attrName "panel.input.focused"
+      , bg (Vty.rgbColor (20 :: Integer) (20 :: Integer) (30 :: Integer)) `Vty.withStyle` Vty.bold
+      )
+    , ( attrName "panel.input.unfocused"
+      , bg (Vty.rgbColor (15 :: Integer) (15 :: Integer) (20 :: Integer))
+      )
+    , ( attrName "border.focused", fg Vty.cyan `Vty.withStyle` Vty.bold )
+    , ( attrName "border.unfocused", fg Vty.brightBlack )
+    , ( attrName "statusbar"
+      , Vty.defAttr `Vty.withBackColor` Vty.blue `Vty.withForeColor` Vty.white
+        `Vty.withStyle` Vty.bold
+      )
+    , ( attrName "message.text", fg Vty.white )
     ]
 
 -- | Draw the chat UI
@@ -93,14 +109,28 @@ drawChatUI st = [ ui ]
     -- History viewport (scrollable text display)
     historyWidget :: Widget Name
     historyWidget
-      = withBorderStyle
-        (if focusPanel st == HistoryPanel && currentMode st == NormalMode
-           then BS.unicodeBold
-           else BS.unicode)
-      $ B.borderWithLabel (txt " History ")
-      $ viewport HistoryViewport Vertical
-      $ padAll 1
-      $ vBox (reverse $ map drawMessage (chatHistory st))
+      = let
+          isFocused   = focusPanel st == HistoryPanel
+          borderAttr
+            = if isFocused
+              then attrName "border.focused"
+              else attrName "border.unfocused"
+          panelAttr
+            = if isFocused
+              then attrName "panel.history.focused"
+              else attrName "panel.history.unfocused"
+          borderStyle
+            = if isFocused && currentMode st == NormalMode
+              then BS.unicodeBold
+              else BS.unicode
+        in 
+          withAttr borderAttr
+          $ withBorderStyle borderStyle
+          $ B.borderWithLabel (txt " History ")
+          $ withAttr panelAttr
+          $ viewport HistoryViewport Vertical
+          $ padAll 1
+          $ vBox (reverse $ map drawMessage (chatHistory st))
 
     -- Draw a single message
     drawMessage :: ChatMessage -> Widget Name
@@ -108,27 +138,46 @@ drawChatUI st = [ ui ]
       = padLeftRight 1
       $ padTop (Pad 1)
       $ hBox
-        [ withAttr (attrName "timestamp") $ txt (messageTime msg), txt " ", txt (messageText msg) ]
+        [ withAttr (attrName "timestamp") $ txt (messageTime msg)
+        , txt " "
+        , withAttr (attrName "message.text") $ txt (messageText msg)
+        ]
 
     -- Input box at the bottom
     inputWidget :: Widget Name
     inputWidget
-      = withBorderStyle
-        (if focusPanel st == InputPanel && currentMode st == NormalMode
-           then BS.unicodeBold
-           else BS.unicode)
-      $ B.borderWithLabel (txt " Input ")
-      $ padAll 1
-      $ vLimit 3
-      $ renderEditor
-        (txt . T.unlines)
-        (currentMode st == InsertMode && focusPanel st == InputPanel)
-        (chatEditor st)
+      = let
+          isFocused   = focusPanel st == InputPanel
+          borderAttr
+            = if isFocused
+              then attrName "border.focused"
+              else attrName "border.unfocused"
+          panelAttr
+            = if isFocused
+              then attrName "panel.input.focused"
+              else attrName "panel.input.unfocused"
+          borderStyle
+            = if isFocused && currentMode st == NormalMode
+              then BS.unicodeBold
+              else BS.unicode
+        in 
+          withAttr borderAttr
+          $ withBorderStyle borderStyle
+          $ B.borderWithLabel (txt " Input ")
+          $ withAttr panelAttr
+          $ padAll 1
+          $ vLimit 3
+          $ renderEditor
+            (txt . T.unlines)
+            (currentMode st == InsertMode && focusPanel st == InputPanel)
+            (chatEditor st)
 
     -- Status bar at bottom
     statusBar :: Widget Name
     statusBar
-      = padLeftRight 1 $ hBox [ modeWidget, txt " | ", txt $ "Focus: " <> case focusPanel st of
+      = withAttr (attrName "statusbar")
+      $ padLeftRight 1
+      $ hBox [ modeWidget, txt " | ", txt $ "Focus: " <> case focusPanel st of
         HistoryPanel -> "History"
         InputPanel   -> "Input", txt " | ", txt "Ctrl+D: Quit" ]
 
