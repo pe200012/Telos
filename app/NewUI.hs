@@ -1,11 +1,11 @@
-
 module NewUI ( main ) where
 
-import           Brick
-import           Brick.Widgets.Edit
+import           Brick                       hiding ( zoom )
+import qualified Brick                       as Brick
+import           Brick.Widgets.Edit         ( editorText, getEditContents
+                                            , handleEditorEvent )
 
-import           Control.Concurrent         ( forkIO )
-import           Control.Concurrent.Chan
+import           Control.Lens               ( (.=), use, (^. ) )
 
 import qualified Data.Text                  as T
 
@@ -22,24 +22,22 @@ import           Telos.TUI.FRP
 -- | Main application entry point
 main :: IO ()
 main = do
-  -- Create channel for receiving submitted messages
-  submitChan <- newChan
-
   -- Setup FRP event handlers
-  ( eventInput, eventTrigger ) <- newAddHandler
+  (frpInput, frpTrigger) <- newAddHandler
+
+  -- IORef to store latest FRP output for Brick to consume
+  outputRef <- newIORef Nothing
 
   -- Build and start FRP network
-  network <- buildFRPNetwork eventInput submitChan
+  let outputHandler output = writeIORef outputRef (Just output)
+  network <- buildFRPNetwork frpInput outputHandler
   actuate network
-
-  -- Start a thread to listen to submitted messages and log them
-  void $ forkIO $ listenToSubmissions submitChan
 
   -- Start Brick application
   let app
-        = App { appDraw         = drawApp
+        = App { appDraw         = drawChatUI
               , appChooseCursor = showFirstCursor
-              , appHandleEvent  = handleEvent eventTrigger
+              , appHandleEvent  = handleEvent frpTrigger outputRef
               , appStartEvent   = return ()
               , appAttrMap      = const initialAttrMap
               }
@@ -48,36 +46,72 @@ main = do
   initialVty <- buildVty
   void $ customMain initialVty buildVty Nothing app initialChatState
 
--- | Draw application
-drawApp :: ChatState -> [ Widget Name ]
-drawApp = drawChatUI
+-- | Handle events: feed to FRP, then apply FRP output
+handleEvent
+  :: (FRPEvent -> IO ())
+  -> IORef (Maybe FRPOutput)
+  -> BrickEvent Name e
+  -> EventM Name ChatState ()
+handleEvent frpTrigger outputRef (VtyEvent vtyEvent) = do
+  -- Feed event to FRP network
+  liftIO $ frpTrigger (FRPVtyEvent vtyEvent)
 
--- | Handle events and optionally trigger FRP events
-handleEvent :: (FRPEvent -> IO ()) -> BrickEvent Name KeyEnter -> EventM Name ChatState ()
-handleEvent _trigger (VtyEvent (Vty.EvKey Vty.KEnter [])) = do
-  cs <- get
-  -- Check if we're in Insert mode on Input panel - only then submit
-  if currentMode cs == InsertMode && focusPanel cs == InputPanel
-    then do
-      let editorContent = getEditContents $ chatEditor cs
-      let currentText = case editorContent of
-            []      -> ""
-            (x : _) -> x
-      unless (T.null currentText) $ do
-        -- Trigger FRP submit event (for future use)
-        -- liftIO $ trigger SubmitInput
-        handleChatEvent (AppEvent KeyEnter)
-    else 
-      -- Otherwise, let the normal event handler deal with it (mode switching)
-      handleChatEvent (VtyEvent (Vty.EvKey Vty.KEnter []))
-handleEvent _trigger e = do
-  -- Pass other events through
-  handleChatEvent e
+  -- Read FRP output
+  mOutput <- liftIO $ readIORef outputRef
 
--- | Listen to submissions from channel (demonstrates FRP connectivity)
-listenToSubmissions :: Chan Text -> IO ()
-listenToSubmissions chan = forever $ do
-  msg <- readChan chan
-  -- In a real app, this would be where we'd send message to LLM
-  -- For now, we just log it
-  putStrLn $ "Submitted: " <> toString msg
+  case mOutput of
+    Nothing -> pass
+    Just output -> applyFRPOutput output
+
+-- Ignore non-VTY events for now
+handleEvent _ _ _ = pass
+
+-- | Apply FRP output to Brick state
+applyFRPOutput :: FRPOutput -> EventM Name ChatState ()
+applyFRPOutput output = do
+  -- Check for halt first
+  when (outShouldHalt output) halt
+
+  -- Update mode
+  currentMode .= outMode output
+
+  -- Update focus
+  focusedPanel .= outFocus output
+
+   -- Handle editor commands
+  case outEditorCmd output of
+    Just EditorInsertNewline -> do
+      Brick.zoom editor $ handleEditorEvent (VtyEvent (Vty.EvKey Vty.KEnter []))
+    Just EditorClear -> do
+      -- Get current text before clearing for message creation
+      currentEditor <- use editor
+      let editorContent = getEditContents currentEditor
+          inputText = T.unlines editorContent
+      -- Only add messages if there's actual content
+      unless (T.null $ T.strip inputText) $ do
+        -- Create actual messages (replacing FRP placeholders)
+        let userMessage = ChatMessage inputText UserMessage
+            echoText = "Echo: " <> inputText
+            echoMessage = ChatMessage echoText AIMessage
+        -- Update history with real messages
+        chatHistory .= echoMessage : userMessage : filter (not . isPending) (outHistory output)
+       -- Clear editor
+      editor .= editorText InputField Nothing ""
+    Just EditorMoveCursorEnd -> do
+      Brick.zoom editor $ handleEditorEvent (VtyEvent (Vty.EvKey Vty.KEnd []))
+    Just (EditorForward vtyEvent) -> do
+      Brick.zoom editor $ handleEditorEvent (VtyEvent vtyEvent)
+    Nothing -> pass
+
+  -- Handle scroll commands
+  case outScrollCmd output of
+    Just ScrollUp -> vScrollBy (viewportScroll HistoryViewport) (-1)
+    Just ScrollDown -> vScrollBy (viewportScroll HistoryViewport) 1
+    Just ScrollPageUp -> vScrollPage (viewportScroll HistoryViewport) Up
+    Just ScrollPageDown -> vScrollPage (viewportScroll HistoryViewport) Brick.Down
+    Just ScrollToEnd -> vScrollToEnd (viewportScroll HistoryViewport)
+    Nothing -> pass
+
+-- | Check if a message is a pending placeholder
+isPending :: ChatMessage -> Bool
+isPending msg = (msg ^. messageText) == "<<PENDING>>" || (msg ^. messageText) == "<<PENDING_ECHO>>"
