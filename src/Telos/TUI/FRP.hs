@@ -27,9 +27,12 @@ import           WEditor.LineWrap           ( breakExact )
 import           WEditorBrick.WrappingEditor
 
 -- | Pure editor event handling (bypasses EventM)
--- This is a pure version of handleEditor that doesn't require lookupExtent
+-- This is a pure version of handleEditor that doesn't require lookupExtent.
+-- Note: We also apply viewerResizeAction with a fixed size since we can't
+-- access Brick's extent system in pure FRP. This means the editor assumes
+-- a fixed viewport height.
 handleEditorPure :: Vty.Event -> WrappingEditor Char Name -> WrappingEditor Char Name
-handleEditorPure event = mapEditor action
+handleEditorPure event = mapEditor (action . viewerResizeAction (80, 5))
   where
     action :: WrappingEditorAction Char
     action = case event of
@@ -99,7 +102,11 @@ buildChatNetwork finMVar initialEditor startup attrMap = mdo
   -- Specific key events
   let eQuit = () <$ Banana.filterE (\(k, m) -> k == Vty.KChar 'd' && m == [Vty.MCtrl]) eKeyPress
       eEnter = () <$ Banana.filterE (\(k, m) -> k == Vty.KEnter && null m) eKeyPress
-      eCtrlEnter = () <$ Banana.filterE (\(k, m) -> k == Vty.KEnter && m == [Vty.MCtrl]) eKeyPress
+      -- Note: Ctrl+Enter is not distinguishable from Enter in most terminals
+      -- (terminals send ASCII bytes, not key events). Use Alt+Enter instead.
+      -- Alt is sent as MMeta in vty.
+      eAltEnter = () <$ Banana.filterE (\(k, m) ->
+        k == Vty.KEnter && Vty.MMeta `elem` m) eKeyPress
       eEsc = () <$ Banana.filterE (\(k, m) -> k == Vty.KEsc && null m) eKeyPress
       eArrowUp = () <$ Banana.filterE (\(k, m) -> k == Vty.KUp && null m) eKeyPress
       eArrowDown = () <$ Banana.filterE (\(k, m) -> k == Vty.KDown && null m) eKeyPress
@@ -139,14 +146,32 @@ buildChatNetwork finMVar initialEditor startup attrMap = mdo
   -- HISTORY BEHAVIOR
   -- ══════════════════════════════════════════════════════════════════
 
-  -- Submit happens when: InsertMode + InputPanel + Ctrl+Enter
+  -- Submit happens when: InsertMode + InputPanel + Alt+Enter
   let bCanSubmit = (&&) <$> ((== InsertMode) <$> bMode) <*> ((== InputPanel) <$> bFocus)
-      eSubmit = Banana.whenE bCanSubmit eCtrlEnter
+      eSubmit = Banana.whenE bCanSubmit eAltEnter
 
-  -- On submit, read editor content and add messages
-  -- History accumulates: new messages prepended
-  let eAddMessages :: Banana.Event ([ChatMessage] -> [ChatMessage])
-      eAddMessages = const [] <$ eSubmit  -- Will be replaced by reactimate side-effect
+  -- We need bEditor to sample it on submit, but bEditor is defined later
+  -- Use mdo's recursive binding - bEditor will be available here
+
+  -- On submit, sample editor content and create messages
+  -- Note: Banana.<@ samples the behavior BEFORE the event's updates are applied
+  -- So we get the editor content before it's cleared
+  let eSubmitContent :: Banana.Event Text
+      eSubmitContent = (\editor ->
+        let editorLines = dumpEditor editor
+        in T.unlines $ map T.pack editorLines
+        ) <$> (bEditor Banana.<@ eSubmit)
+
+      -- Create user message and placeholder AI response
+      eAddMessages :: Banana.Event ([ChatMessage] -> [ChatMessage])
+      eAddMessages = (\content history ->
+        if T.null (T.strip content)
+        then history  -- Don't add empty messages
+        else
+          let userMsg = ChatMessage content UserMessage
+              aiMsg = ChatMessage "[AI response placeholder]" AIMessage
+          in aiMsg : userMsg : history  -- Prepend new messages
+        ) <$> eSubmitContent
 
   bHistory <- Banana.accumB [] eAddMessages
 
@@ -155,10 +180,17 @@ buildChatNetwork finMVar initialEditor startup attrMap = mdo
   -- ══════════════════════════════════════════════════════════════════
 
   -- Forward key events to editor when in InsertMode + InputPanel
+  -- BUT exclude Ctrl+Enter which is for submit
   let bInEditorMode = (&&) <$> ((== InsertMode) <$> bMode) <*> ((== InputPanel) <$> bFocus)
 
-      -- Filter events that should go to editor
-      eEditorKeys = Banana.filterJust $ Banana.whenE bInEditorMode (Just <$> eVty)
+      -- Check if event is Alt+Enter (should not go to editor, used for submit)
+      isAltEnter (Vty.EvKey Vty.KEnter mods) = Vty.MMeta `elem` mods
+      isAltEnter _ = False
+
+      -- Filter events that should go to editor (exclude Alt+Enter)
+      eEditorKeys = Banana.filterJust $
+        Banana.whenE bInEditorMode $
+          (\ev -> if isAltEnter ev then Nothing else Just ev) <$> eVty
 
       -- Editor update events (pure function application)
       eEditorUpdate :: Banana.Event (WrappingEditor Char Name -> WrappingEditor Char Name)
@@ -176,14 +208,14 @@ buildChatNetwork finMVar initialEditor startup attrMap = mdo
 
   -- On submit, sample current editor and print
   -- Note: We use <@> to sample the editor at the time of submit event
-  let eSubmitWithEditor = bEditor Banana.<@ eSubmit
+  -- let eSubmitWithEditor = bEditor Banana.<@ eSubmit
 
-  reactimate $ (\editor -> do
-    let editorLines = dumpEditor editor
-        inputText = T.unlines $ map T.pack editorLines
-    unless (T.null $ T.strip inputText) $
-      putStrLn $ "Submitted: " <> T.unpack inputText
-    ) <$> eSubmitWithEditor
+  -- reactimate $ (\editor -> do
+  --   let editorLines = dumpEditor editor
+  --       inputText = T.unlines $ map T.pack editorLines
+  --   unless (T.null $ T.strip inputText) $
+  --     putStrLn $ "Submitted: " <> T.unpack inputText
+  --   ) <$> eSubmitWithEditor
 
   -- ══════════════════════════════════════════════════════════════════
   -- WIDGETS BEHAVIOR
@@ -225,5 +257,3 @@ buildChatNetwork finMVar initialEditor startup attrMap = mdo
 
   -- When FRP network finishes, signal main thread
   reactimate $ putMVar finMVar () <$ finE
-
-  pure ()
