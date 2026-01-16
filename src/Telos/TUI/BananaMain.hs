@@ -26,8 +26,10 @@ where
 
 import Brick.AttrMap (AttrMap)
 import Brick.Types
-  ( CursorLocation (..),
+  ( CursorLocation,
+    Extent,
     Widget,
+    extentName,
     locationColumnL,
     locationRowL,
   )
@@ -100,18 +102,20 @@ brickNetwork ::
     ([CursorLocation n] -> Maybe (CursorLocation n)) ->
   -- | behaviour that contains the attribute-map
   Banana.Behavior AttrMap ->
-  -- | returns three results:
+  -- | returns four results:
   --  1) A (reactive-banana) event containing any (vty) input events
   --  2) An event that fires once when shutdown of the brick interface is
   --   completed
   --  3) a function that can be used to implement suspension of the brick
   --   ui to run some external commands etc.
+  --  4) An event containing widget extents after each render
   Banana.MomentIO
     ( Banana.Event (Maybe Event),
       Banana.Event (),
       ( Banana.Event (IO a) ->
         Banana.MomentIO (Banana.Event a)
-      )
+      ),
+      Banana.Event (M.Map n (Extent n))
     )
 brickNetwork (startupAH, startupH) triggerE widgetB cursorB attrB = do
   let initialRS :: RenderState n
@@ -122,6 +126,7 @@ brickNetwork (startupAH, startupH) triggerE widgetB cursorB attrB = do
   startupEvent <- Banana.fromAddHandler startupAH
   (redrawE, redrawH) <- Banana.newEvent
   (suspendE, suspendH) <- Banana.newEvent
+  (extentEvent, extentH) <- Banana.newEvent
 
   Banana.reactimate $ (void . forkIO) <$> suspendE
 
@@ -210,7 +215,7 @@ brickNetwork (startupAH, startupH) triggerE widgetB cursorB attrB = do
           Nothing -> pass
           Just (vty, _) -> do
             renderState <- readIORef rsRef
-            (renderState', _exts) <-
+            (renderState', exts) <-
               render
                 vty
                 widgetStack
@@ -218,6 +223,8 @@ brickNetwork (startupAH, startupH) triggerE widgetB cursorB attrB = do
                 attrs
                 renderState
             writeIORef rsRef renderState'
+            -- Fire extent event with the rendered extents
+            extentH exts
 
   Banana.reactimate
     $ redrawF
@@ -227,7 +234,7 @@ brickNetwork (startupAH, startupH) triggerE widgetB cursorB attrB = do
     <*> attrB
     Banana.<@ redrawE
 
-  pure (eventEvent, shutdownEvent, suspendSetup)
+  pure (eventEvent, shutdownEvent, suspendSetup, extentEvent)
 
 -- | Alternative interface that doesn't require MonadFix usage.
 brickNetworkNoFix ::
@@ -237,6 +244,7 @@ brickNetworkNoFix ::
   ( Banana.Event (Maybe Event) ->
     Banana.Event () ->
     (Banana.Event (IO a) -> Banana.MomentIO (Banana.Event a)) ->
+    Banana.Event (M.Map n (Extent n)) ->
     Banana.MomentIO
       ( Banana.Event Next,
         Banana.Behavior [Widget n],
@@ -252,7 +260,8 @@ brickNetworkNoFix (startupAH, startupH) interfaceF = mdo
       eventEvent
       shutdownEvent
       suspendSetup
-  (eventEvent, shutdownEvent, suspendSetup) <-
+      extentEvent
+  (eventEvent, shutdownEvent, suspendSetup, extentEvent) <-
     brickNetwork
       (startupAH, startupH)
       triggerE
@@ -261,7 +270,7 @@ brickNetworkNoFix (startupAH, startupH) interfaceF = mdo
       attrB
   pass
 
--- | Render the UI
+-- | Render the UI and return extents
 render ::
   Ord n =>
   Vty ->
@@ -269,11 +278,13 @@ render ::
   ([CursorLocation n] -> Maybe (CursorLocation n)) ->
   AttrMap ->
   RenderState n ->
-  IO (RenderState n, [a])
+  IO (RenderState n, M.Map n (Extent n))
 render vty widgetStack chooseCursor attrMapCur rs = do
   sz <- displayBounds $ outputIface vty
-  let (newRS, pic, theCursor, _exts) =
+  let (newRS, pic, theCursor, exts) =
         renderFinal attrMapCur widgetStack sz chooseCursor rs
+      -- Convert [Extent n] to Map n (Extent n)
+      extentMap = M.fromList [(extentName e, e) | e <- exts]
       picWithCursor = case theCursor of
         Nothing -> pic {picCursor = NoCursor}
         Just loc ->
@@ -286,4 +297,4 @@ render vty widgetStack chooseCursor attrMapCur rs = do
 
   update vty picWithCursor
 
-  pure (newRS, [])
+  pure (newRS, extentMap)
