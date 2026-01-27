@@ -20,12 +20,13 @@ import           Control.Lens       ( (&), (.~), makeFieldsNoPrefix )
 import           Data.Maybe         ( fromMaybe )
 import           Data.Text          ( Text )
 import qualified Data.Text          as Text
+import qualified Data.Text.IO       as TIO
 
 import           GHC.Generics       ( Generic )
 
-import           System.Directory   ( doesFileExist, getHomeDirectory )
+import           System.Directory   ( createDirectoryIfMissing, doesFileExist, getHomeDirectory )
 import           System.Environment ( lookupEnv )
-import           System.FilePath    ( (</>) )
+import           System.FilePath    ( (</>), takeDirectory )
 
 import           Toml               ( (.=), TomlCodec )
 import qualified Toml
@@ -42,6 +43,17 @@ configCodec
   <*> Toml.text "model" .= _model
   <*> Toml.double "temperature" .= _temperature
 
+defaultConfig :: Config
+defaultConfig
+  = Config { _apiKey      = ""
+           , _baseUrl     = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+           , _model       = "glm-4.7-flash"
+           , _temperature = 0.7
+           }
+
+renderConfigToml :: Config -> Text
+renderConfigToml = Toml.encode configCodec
+
 configPath :: IO FilePath
 configPath = do
   mXdg <- lookupEnv "XDG_CONFIG_HOME"
@@ -54,7 +66,10 @@ loadConfig = do
   path <- configPath
   exists <- doesFileExist path
   if not exists
-    then pure $ Left ("missing config: " <> Text.pack path)
+    then do
+      createDirectoryIfMissing True (takeDirectory path)
+      TIO.writeFile path (renderConfigToml defaultConfig)
+      pure $ Left ("created default config: " <> Text.pack path)
     else do
       decoded <- Toml.decodeFileExact configCodec path
       case decoded of
