@@ -1,20 +1,34 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators #-}
 
 module LLM.Http ( runLLMHttp, ChatRequest(..), Message(..), Role(..) ) where
 
+import           Config                   ( Config
+                                          , HasApiKey(..)
+                                          , HasBaseUrl(..)
+                                          , HasModel(..)
+                                          , HasTemperature(..)
+                                          )
+
 import           Control.Applicative      ( asum )
-import           Control.Lens             ( (^?) )
+import           Control.Lens             ( (^?), view )
+import           Control.Lens.TH          ( makeFieldsNoPrefix )
 import           Control.Monad.IO.Class   ( liftIO )
 
 import           Data.Aeson               ( FromJSON(parseJSON)
                                           , ToJSON(toJSON)
                                           , Value(String)
+                                          , defaultOptions
                                           , eitherDecodeStrict'
+                                          , fieldLabelModifier
+                                          , genericParseJSON
+                                          , genericToJSON
                                           , withText
                                           )
 import           Data.Aeson.Lens          ( _String, key, nth )
@@ -23,7 +37,7 @@ import qualified Data.ByteString.Char8    as BS8
 import           Data.Conduit             ( (.|), runConduitRes )
 import qualified Data.Conduit.Combinators as C
 import qualified Data.Conduit.List        as CL
-import           Data.IORef               ( IORef, modifyIORef', newIORef, readIORef, writeIORef )
+import           Data.IORef               ( newIORef, readIORef, writeIORef )
 import           Data.Text                ( Text )
 import qualified Data.Text                as Text
 import           Data.Text.Encoding       ( encodeUtf8 )
@@ -42,9 +56,9 @@ import           Network.HTTP.Simple      ( getResponseBody
                                           , setRequestMethod
                                           )
 
-import           Polysemy                 ( Embed, Member, Sem, embed, interpret )
+import           Polysemy                 ( Embed, Members, Sem, embed, interpret )
+import           Polysemy.Input           ( Input, input )
 
-import           System.Environment       ( lookupEnv )
 import           System.IO                ( hFlush, stdout )
 
 data Role = System | User | Assistant
@@ -62,38 +76,45 @@ instance FromJSON Role where
     "assistant" -> pure Assistant
     _           -> fail "unknown role"
 
-data Message = Message { role :: Role, content :: Text }
+data Message = Message { _role :: Role, _content :: Text }
   deriving ( Eq, Show, Generic )
 
-instance ToJSON Message
+instance ToJSON Message where
+  toJSON = genericToJSON defaultOptions { fieldLabelModifier = drop 1 }
 
-instance FromJSON Message
+instance FromJSON Message where
+  parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = drop 1 }
 
-data ChatRequest = ChatRequest { model :: Text, messages :: [ Message ], stream :: Bool }
+makeFieldsNoPrefix ''Message
+
+data ChatRequest
+  = ChatRequest
+  { _model :: Text, _messages :: [ Message ], _temperature :: Double, _stream :: Bool }
   deriving ( Eq, Show, Generic )
 
-instance ToJSON ChatRequest
+instance ToJSON ChatRequest where
+  toJSON = genericToJSON defaultOptions { fieldLabelModifier = drop 1 }
 
-runLLMHttp :: Member (Embed IO) r => Sem (LLM ': r) a -> Sem r a
+makeFieldsNoPrefix ''ChatRequest
+
+runLLMHttp :: Members '[ Embed IO, Input Config ] r => Sem (LLM ': r) a -> Sem r a
 runLLMHttp = interpret $ \case
   AskLLM prompt -> do
-    mKey <- embed @IO $ lookupEnv "ZHIPUAI_API_KEY"
-    case mKey of
-      Nothing     -> pure "[missing env var: ZHIPUAI_API_KEY]"
-      Just rawKey -> do
-        let apiKey = Text.pack rawKey
-        req0 <- embed @IO $ parseRequest "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-        let payload
-              = ChatRequest { model    = "glm-4.7-flash"
-                            , messages = [ Message { role = User, content = prompt } ]
-                            , stream   = True
-                            }
-        let req
-              = setRequestMethod "POST"
-              $ setRequestHeader "Authorization" [ "Bearer " <> encodeUtf8 apiKey ]
-              $ setRequestHeader "Content-Type" [ "application/json" ]
-              $ setRequestBodyJSON payload req0
-        embed @IO $ streamResponse req
+    cfg <- input @Config
+    req0 <- embed @IO $ parseRequest (Text.unpack (view baseUrl cfg))
+    let payload
+          = ChatRequest { _model       = view model cfg
+                        , _messages    = [ Message { _role = User, _content = prompt } ]
+                        , _temperature = view temperature cfg
+                        , _stream      = True
+                        }
+    let req
+          = setRequestMethod "POST"
+          $ setRequestHeader "Authorization" [ "Bearer " <> encodeUtf8 (view apiKey cfg) ]
+          $ setRequestHeader "Content-Type" [ "application/json" ]
+          $ setRequestHeader "Accept" [ "text/event-stream" ]
+          $ setRequestBodyJSON payload req0
+    embed @IO $ streamResponse req
 
 streamResponse :: HTTP.Request -> IO Text
 streamResponse req = do

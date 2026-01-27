@@ -27,13 +27,16 @@ dependencies:
   - bytestring
   - conduit
   - conduit-extra
+  - directory
+  - filepath
+  - haskeline
   - http-conduit
   - http-client
   - lens
   - lens-aeson
   - polysemy
   - text
-  - haskeline
+  - tomland
 
 ghc-options:
   - -Wall

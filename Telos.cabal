@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Config
       Effects.LLM
       Lib
       LLM.Http
@@ -53,6 +54,8 @@ library
     , bytestring
     , conduit
     , conduit-extra
+    , directory
+    , filepath
     , haskeline
     , http-client
     , http-conduit
@@ -60,6 +63,7 @@ library
     , lens-aeson
     , polysemy
     , text
+    , tomland
   default-language: GHC2021
 
 executable Telos-exe
@@ -90,6 +94,8 @@ executable Telos-exe
     , bytestring
     , conduit
     , conduit-extra
+    , directory
+    , filepath
     , haskeline
     , http-client
     , http-conduit
@@ -97,6 +103,7 @@ executable Telos-exe
     , lens-aeson
     , polysemy
     , text
+    , tomland
   default-language: GHC2021
 
 test-suite Telos-test
@@ -128,6 +135,8 @@ test-suite Telos-test
     , bytestring
     , conduit
     , conduit-extra
+    , directory
+    , filepath
     , haskeline
     , http-client
     , http-conduit
@@ -135,4 +144,5 @@ test-suite Telos-test
     , lens-aeson
     , polysemy
     , text
+    , tomland
   default-language: GHC2021

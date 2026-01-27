@@ -1,0 +1,65 @@
+{-# LANGUAGE DeriveGeneric #-}
+
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+
+module Config
+  ( Config(..)
+  , HasApiKey(..)
+  , HasBaseUrl(..)
+  , HasModel(..)
+  , HasTemperature(..)
+  , configCodec
+  , configPath
+  , loadConfig
+  ) where
+
+import           Control.Lens       ( (&), (.~), makeFieldsNoPrefix )
+
+import           Data.Maybe         ( fromMaybe )
+import           Data.Text          ( Text )
+import qualified Data.Text          as Text
+
+import           GHC.Generics       ( Generic )
+
+import           System.Directory   ( doesFileExist, getHomeDirectory )
+import           System.Environment ( lookupEnv )
+import           System.FilePath    ( (</>) )
+
+import           Toml               ( (.=), TomlCodec )
+import qualified Toml
+
+data Config = Config { _apiKey :: Text, _baseUrl :: Text, _model :: Text, _temperature :: Double }
+  deriving ( Eq, Show, Generic )
+
+makeFieldsNoPrefix ''Config
+
+configCodec :: TomlCodec Config
+configCodec
+  = Config <$> Toml.text "api_key" .= _apiKey
+  <*> Toml.text "base_url" .= _baseUrl
+  <*> Toml.text "model" .= _model
+  <*> Toml.double "temperature" .= _temperature
+
+configPath :: IO FilePath
+configPath = do
+  mXdg <- lookupEnv "XDG_CONFIG_HOME"
+  home <- getHomeDirectory
+  let base = fromMaybe (home </> ".config") mXdg
+  pure (base </> "telos" </> "config.toml")
+
+loadConfig :: IO (Either Text Config)
+loadConfig = do
+  path <- configPath
+  exists <- doesFileExist path
+  if not exists
+    then pure $ Left ("missing config: " <> Text.pack path)
+    else do
+      decoded <- Toml.decodeFileExact configCodec path
+      case decoded of
+        Left err  -> pure $ Left (Text.pack (show err))
+        Right cfg -> do
+          mKey <- lookupEnv "ZHIPUAI_API_KEY"
+          let cfg' = maybe cfg (\k -> cfg & apiKey .~ Text.pack k) mKey
+          pure (Right cfg')
