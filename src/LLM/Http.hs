@@ -7,7 +7,14 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators #-}
 
-module LLM.Http ( runLLMHttp, runLLMHttpSilent, ChatRequest(..), Message(..), Role(..) ) where
+module LLM.Http
+  ( runLLMHttp
+  , runLLMHttpSilent
+  , ChatRequest
+  , defaultChatRequest
+  , Message
+  , Role(..)
+  ) where
 
 import           Config                   ( Config
                                           , HasApiKey(..)
@@ -17,7 +24,7 @@ import           Config                   ( Config
                                           )
 
 import           Control.Applicative      ( asum )
-import           Control.Lens             ( (^?), view )
+import           Control.Lens             ( (&), (.~), (^?), view )
 import           Control.Lens.TH          ( makeFieldsNoPrefix )
 import           Control.Monad.IO.Class   ( liftIO )
 
@@ -59,7 +66,7 @@ import           Polysemy.State           ( State, get )
 
 import           System.IO                ( hFlush, stdout )
 
-import           Types.Chat               ( Message(..), Role(..) )
+import           Types.Chat               ( Message, Role(..) )
 
 data ChatRequest
   = ChatRequest
@@ -68,6 +75,10 @@ data ChatRequest
 
 instance ToJSON ChatRequest where
   toJSON = genericToJSON defaultOptions { fieldLabelModifier = drop 1 }
+
+defaultChatRequest :: ChatRequest
+defaultChatRequest
+  = ChatRequest { _model = "", _messages = [], _temperature = 0.7, _stream = False }
 
 makeFieldsNoPrefix ''ChatRequest
 
@@ -83,11 +94,11 @@ runLLMHttp = interpret $ \case
             else reverse history
     req0 <- embed @IO $ parseRequest (Text.unpack (view baseUrl cfg))
     let payload
-          = ChatRequest { _model       = view model cfg
-                        , _messages    = messagesToSend
-                        , _temperature = view temperature cfg
-                        , _stream      = True
-                        }
+          = defaultChatRequest
+          & model .~ view model cfg
+          & messages .~ messagesToSend
+          & temperature .~ view temperature cfg
+          & stream .~ True
     let req
           = setRequestMethod "POST"
           $ setRequestHeader "Authorization" [ "Bearer " <> encodeUtf8 (view apiKey cfg) ]
@@ -108,11 +119,11 @@ runLLMHttpSilent = interpret $ \case
             else reverse history
     req0 <- embed @IO $ parseRequest (Text.unpack (view baseUrl cfg))
     let payload
-          = ChatRequest { _model       = view model cfg
-                        , _messages    = messagesToSend
-                        , _temperature = view temperature cfg
-                        , _stream      = True
-                        }
+          = defaultChatRequest
+          & model .~ view model cfg
+          & messages .~ messagesToSend
+          & temperature .~ view temperature cfg
+          & stream .~ True
     let req
           = setRequestMethod "POST"
           $ setRequestHeader "Authorization" [ "Bearer " <> encodeUtf8 (view apiKey cfg) ]

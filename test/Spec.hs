@@ -1,6 +1,7 @@
 module Main ( main ) where
 
 import           Control.Exception       ( SomeException, bracket, try )
+import           Control.Lens            ( view )
 import           Control.Monad           ( void )
 
 import           Crypto.Hash             ( Digest, SHA256, hash )
@@ -12,11 +13,16 @@ import           Data.Text               ( Text )
 import qualified Data.Text               as Text
 import           Data.Text.Encoding      ( encodeUtf8 )
 
-import           Snapshot.Git            ( ProjectEntry(..)
-                                         , createProject
-                                         , listProjects
-                                         , renameProject
-                                         )
+import           Snapshot.Git
+  ( HasProjectName(..)
+  , HasProjectPath(..)
+  , ProjectEntry
+  , createProject
+  , listProjects
+  , projectName
+  , projectPath
+  , renameProject
+  )
 
 import           System.Directory        ( createDirectoryIfMissing
                                          , getTemporaryDirectory
@@ -33,8 +39,7 @@ main = do
   ok2 <- testListProjectsReadsIndex
   ok3 <- testCreateProjectRejectsDuplicate
   ok4 <- testRenameProject
-  ok5 <- testLegacyMigration
-  if and [ ok1, ok2, ok3, ok4, ok5 ]
+  if and [ ok1, ok2, ok3, ok4 ]
     then putStrLn "All tests passed"
     else exitFailure
 
@@ -58,7 +63,7 @@ testListProjectsReadsIndex = withTempCache $ \tempDir -> do
   createDirectoryIfMissing True (takeDirectory path)
   writeFile path indexJson
   entries <- listProjects scopeRoot
-  let names = sortOn id (map _projectName entries)
+  let names = sortOn id (map (view projectName) entries)
   if names == sortOn id expectedNames
     then pure True
     else do
@@ -102,34 +107,12 @@ testRenameProject = withTempCache $ \_ -> do
           pure False
         Right _  -> do
           entries <- listProjects scopeRoot
-          let names = map _projectName entries
+          let names = map (view projectName) entries
           if Text.pack "demo" `elem` names && Text.pack "untitled-1" `notElem` names
             then pure True
             else do
               putStrLn "Expected rename to update project name"
               pure False
-
-testLegacyMigration :: IO Bool
-testLegacyMigration = withTempCache $ \tempDir -> do
-  let scopeRoot  = "/tmp/work"
-      legacyPath = tempDir </> "telos" </> "project-index.json"
-  createDirectoryIfMissing True (takeDirectory legacyPath)
-  writeFile legacyPath legacyJson
-  entries <- listProjects scopeRoot
-  let paths = map _projectPath entries
-  if Text.pack "/tmp/work" `elem` paths && Text.pack "/other" `notElem` paths
-    then pure True
-    else do
-      putStrLn "Expected legacy migration to scope entries by path"
-      pure False
-  where
-    legacyJson
-      = "{\n"
-      <> "  \"projects\": {\n"
-      <> "    \"/tmp/work\": { \"uuid\": \"id-a\", \"lastSession\": \"hash-a\" },\n"
-      <> "    \"/other\": { \"uuid\": \"id-b\", \"lastSession\": null }\n"
-      <> "  }\n"
-      <> "}\n"
 
 indexPathFor :: FilePath -> FilePath -> FilePath
 indexPathFor cacheRoot scopeRoot

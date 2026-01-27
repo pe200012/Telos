@@ -5,7 +5,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Config
-  ( Config(..)
+  ( Config
   , HasApiKey(..)
   , HasBaseUrl(..)
   , HasModel(..)

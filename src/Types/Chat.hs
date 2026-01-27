@@ -4,7 +4,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Types.Chat ( Role(..), Message(..) ) where
+module Types.Chat
+  ( Role(..)
+  , Message
+  , defaultMessage
+  , mkMessage
+  , HasRole(..)
+  , HasContent(..)
+  ) where
 
 import           Control.Lens.TH ( makeFieldsNoPrefix )
 
@@ -39,6 +46,9 @@ instance FromJSON Role where
 data Message = Message { _role :: Role, _content :: Text }
   deriving ( Eq, Show, Generic )
 
+defaultMessage :: Message
+defaultMessage = Message { _role = User, _content = "" }
+
 instance ToJSON Message where
   toJSON = genericToJSON defaultOptions { fieldLabelModifier = drop 1 }
 
@@ -46,3 +56,6 @@ instance FromJSON Message where
   parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = drop 1 }
 
 makeFieldsNoPrefix ''Message
+
+mkMessage :: Role -> Text -> Message
+mkMessage r c = Message { _role = r, _content = c }
