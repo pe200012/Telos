@@ -9,11 +9,14 @@
 {-# LANGUAGE TypeOperators #-}
 
 module Snapshot.Git
-  ( runSnapshotGit
+  ( ProjectEntry(..)
+  , runSnapshotGit
   , snapshotRepoPath
   , latestSnapshotHash
+  , listProjects
   , listSnapshots
   , lastSessionHash
+  , ensureProject
   , setLastSessionHash
   ) where
 
@@ -42,7 +45,7 @@ import qualified Data.Text               as Text
 import           Data.Text.Encoding      ( encodeUtf8 )
 import           Data.Time.Clock         ( getCurrentTime )
 
-import           Effects.Snapshot        ( Snapshot(..) )
+import           Effects.Snapshot        ( Snapshot(..), SnapshotCommit(SnapshotCommit) )
 
 import           GHC.Generics            ( Generic )
 
@@ -55,7 +58,7 @@ import           System.Directory        ( createDirectoryIfMissing
                                          )
 import           System.Environment      ( lookupEnv )
 import           System.FilePath         ( (</>), takeDirectory )
-import           System.IO.Error         ( isDoesNotExistError, userError )
+import           System.IO.Error         ( isDoesNotExistError )
 import           System.Process          ( readProcess )
 
 import           Types.Chat              ( Message )
@@ -66,9 +69,15 @@ data ProjectMeta = ProjectMeta { _uuid :: Text, _lastSession :: Maybe Text }
 newtype ProjectIndex = ProjectIndex { _projects :: Map Text ProjectMeta }
   deriving ( Eq, Show, Generic )
 
+data ProjectEntry
+  = ProjectEntry { _projectRoot :: Text, _projectId :: Text, _entryLastSession :: Maybe Text }
+  deriving ( Eq, Show, Generic )
+
 makeFieldsNoPrefix ''ProjectMeta
 
 makeFieldsNoPrefix ''ProjectIndex
+
+makeFieldsNoPrefix ''ProjectEntry
 
 instance ToJSON ProjectMeta where
   toJSON = genericToJSON defaultOptions { fieldLabelModifier = drop 1 }
@@ -83,19 +92,19 @@ instance FromJSON ProjectIndex where
   parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = drop 1 }
 
 runSnapshotGit :: Member (Embed IO) r => FilePath -> Sem (Snapshot ': r) a -> Sem r a
-runSnapshotGit projectRoot = interpret $ \case
-  SaveSnapshot history -> embed $ saveSnapshotGit projectRoot history
-  LoadSnapshot hash    -> embed $ loadSnapshotGit projectRoot hash
+runSnapshotGit rootPath = interpret $ \case
+  SaveSnapshot history -> embed $ saveSnapshotGit rootPath history
+  LoadSnapshot (SnapshotCommit c) -> embed $ loadSnapshotGit rootPath c
 
 snapshotRepoPath :: FilePath -> IO FilePath
-snapshotRepoPath projectRoot = do
+snapshotRepoPath rootPath = do
   cacheRoot <- xdgCacheDir
-  projectId <- getOrCreateProjectId projectRoot
-  pure (cacheRoot </> "telos" </> "snapshots" </> Text.unpack projectId)
+  projId <- getOrCreateProjectId rootPath
+  pure (cacheRoot </> "telos" </> "snapshots" </> Text.unpack projId)
 
 saveSnapshotGit :: FilePath -> [ Message ] -> IO ()
-saveSnapshotGit projectRoot history = do
-  repo <- snapshotRepoPath projectRoot
+saveSnapshotGit rootPath history = do
+  repo <- snapshotRepoPath rootPath
   ensureGitRepo repo
   let historyPath = repo </> "history.json"
   LBS.writeFile historyPath (encode history)
@@ -103,16 +112,16 @@ saveSnapshotGit projectRoot history = do
   _ <- gitMaybe
     repo
     [ "-c", "user.name=telos", "-c", "user.email=telos@local", "commit", "-m", "snapshot" ]
-  updateLastSession projectRoot
+  updateLastSession rootPath
 
 loadSnapshotGit :: FilePath -> Text -> IO (Maybe [ Message ])
-loadSnapshotGit projectRoot hash = do
-  repo <- snapshotRepoPath projectRoot
+loadSnapshotGit rootPath commitHash = do
+  repo <- snapshotRepoPath rootPath
   exists <- doesDirectoryExist (repo </> ".git")
   if not exists
     then pure Nothing
     else do
-      let ref = Text.unpack hash <> ":history.json"
+      let ref = Text.unpack commitHash <> ":history.json"
       contentResult <- gitMaybe repo [ "show", ref ]
       case contentResult of
         Left _        -> pure Nothing
@@ -154,9 +163,9 @@ saveIndex idx = do
   LBS.writeFile path (encode idx)
 
 getOrCreateProjectId :: FilePath -> IO Text
-getOrCreateProjectId projectRoot = do
+getOrCreateProjectId rootPath = do
   idx <- loadIndex
-  let key = Text.pack projectRoot
+  let key = Text.pack rootPath
   case Map.lookup key (_projects idx) of
     Just meta -> pure (_uuid meta)
     Nothing   -> do
@@ -166,30 +175,40 @@ getOrCreateProjectId projectRoot = do
       saveIndex idx'
       pure newId
 
+ensureProject :: FilePath -> IO Text
+ensureProject = getOrCreateProjectId
+
+listProjects :: IO [ ProjectEntry ]
+listProjects = map toEntry . Map.toList . _projects <$> loadIndex
+  where
+    toEntry ( root, meta )
+      = ProjectEntry
+      { _projectRoot = root, _projectId = _uuid meta, _entryLastSession = _lastSession meta }
+
 updateLastSession :: FilePath -> IO ()
-updateLastSession projectRoot = do
-  repo <- snapshotRepoPath projectRoot
+updateLastSession rootPath = do
+  repo <- snapshotRepoPath rootPath
   result <- gitMaybe repo [ "rev-parse", "HEAD" ]
   case result of
     Left _    -> pure ()
     Right out -> do
-      let hash = Text.pack (takeWhile (/= '\n') out)
-      setLastSessionHash projectRoot hash
+      let commitHash = Text.pack (takeWhile (/= '\n') out)
+      setLastSessionHash rootPath commitHash
 
 lastSessionHash :: FilePath -> IO (Maybe Text)
-lastSessionHash projectRoot = do
+lastSessionHash rootPath = do
   idx <- loadIndex
-  let key = Text.pack projectRoot
+  let key = Text.pack rootPath
   pure $ Map.lookup key (_projects idx) >>= _lastSession
 
 setLastSessionHash :: FilePath -> Text -> IO ()
-setLastSessionHash projectRoot hash = do
+setLastSessionHash rootPath commitHash = do
   idx <- loadIndex
-  let key = Text.pack projectRoot
-  projectId <- getOrCreateProjectId projectRoot
+  let key = Text.pack rootPath
+  projId <- getOrCreateProjectId rootPath
   let meta = case Map.lookup key (_projects idx) of
-        Just m  -> m { _lastSession = Just hash }
-        Nothing -> ProjectMeta { _uuid = projectId, _lastSession = Just hash }
+        Just m  -> m { _lastSession = Just commitHash }
+        Nothing -> ProjectMeta { _uuid = projId, _lastSession = Just commitHash }
       idx' = idx { _projects = Map.insert key meta (_projects idx) }
   saveIndex idx'
 
@@ -219,8 +238,8 @@ newProjectId = do
   pure (Text.pack (BS8.unpack hexBytes))
 
 latestSnapshotHash :: FilePath -> IO (Maybe Text)
-latestSnapshotHash projectRoot = do
-  repo <- snapshotRepoPath projectRoot
+latestSnapshotHash rootPath = do
+  repo <- snapshotRepoPath rootPath
   exists <- doesDirectoryExist (repo </> ".git")
   if not exists
     then pure Nothing
@@ -231,8 +250,8 @@ latestSnapshotHash projectRoot = do
         Right out -> pure (Just (Text.pack (takeWhile (/= '\n') out)))
 
 listSnapshots :: FilePath -> IO [ Text ]
-listSnapshots projectRoot = do
-  repo <- snapshotRepoPath projectRoot
+listSnapshots rootPath = do
+  repo <- snapshotRepoPath rootPath
   exists <- doesDirectoryExist (repo </> ".git")
   if not exists
     then pure []

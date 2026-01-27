@@ -57,6 +57,7 @@ ghc-options:
 default-extensions:
   - BangPatterns
   - DerivingStrategies
+  - DataKinds
   - FlexibleContexts
   - FlexibleInstances
   - LambdaCase

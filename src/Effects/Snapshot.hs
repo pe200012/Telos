@@ -2,7 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Effects.Snapshot ( Snapshot(..), saveSnapshot, loadSnapshot ) where
+module Effects.Snapshot ( Snapshot(..), SnapshotCommit(..), saveSnapshot, loadSnapshot ) where
 
 import           Data.Text  ( Text )
 
@@ -12,8 +12,11 @@ import           Types.Chat ( Message )
 
 type ChatHistory = [ Message ]
 
+newtype SnapshotCommit = SnapshotCommit { unSnapshotCommit :: Text }
+  deriving ( Eq, Show )
+
 data Snapshot m a where
   SaveSnapshot :: ChatHistory -> Snapshot m ()
-  LoadSnapshot :: Text -> Snapshot m (Maybe ChatHistory)
+  LoadSnapshot :: SnapshotCommit -> Snapshot m (Maybe ChatHistory)
 
 makeSem ''Snapshot

@@ -41,6 +41,7 @@ library
   default-extensions:
       BangPatterns
       DerivingStrategies
+      DataKinds
       FlexibleContexts
       FlexibleInstances
       LambdaCase
@@ -85,6 +86,7 @@ executable Telos-exe
   default-extensions:
       BangPatterns
       DerivingStrategies
+      DataKinds
       FlexibleContexts
       FlexibleInstances
       LambdaCase
@@ -131,6 +133,7 @@ test-suite Telos-test
   default-extensions:
       BangPatterns
       DerivingStrategies
+      DataKinds
       FlexibleContexts
       FlexibleInstances
       LambdaCase
