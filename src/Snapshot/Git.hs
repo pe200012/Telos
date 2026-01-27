@@ -16,7 +16,8 @@ module Snapshot.Git
   , listProjects
   , listSnapshots
   , lastSessionHash
-  , ensureProject
+  , createProject
+  , renameProject
   , setLastSessionHash
   ) where
 
@@ -26,7 +27,9 @@ import           Control.Monad           ( unless )
 
 import           Crypto.Hash             ( Digest, SHA256, hash )
 
-import           Data.Aeson              ( FromJSON(parseJSON)
+import           Data.Aeson              ( (.:)
+                                         , (.:?)
+                                         , FromJSON(parseJSON)
                                          , ToJSON(toJSON)
                                          , defaultOptions
                                          , eitherDecodeStrict'
@@ -34,6 +37,7 @@ import           Data.Aeson              ( FromJSON(parseJSON)
                                          , fieldLabelModifier
                                          , genericParseJSON
                                          , genericToJSON
+                                         , withObject
                                          )
 import           Data.ByteArray.Encoding ( Base(Base16), convertToBase )
 import qualified Data.ByteString.Char8   as BS8
@@ -57,20 +61,27 @@ import           System.Directory        ( createDirectoryIfMissing
                                          , getHomeDirectory
                                          )
 import           System.Environment      ( lookupEnv )
-import           System.FilePath         ( (</>), takeDirectory )
+import           System.FilePath         ( (</>), takeDirectory, takeFileName )
 import           System.IO.Error         ( isDoesNotExistError )
 import           System.Process          ( readProcess )
 
 import           Types.Chat              ( Message )
 
-data ProjectMeta = ProjectMeta { _uuid :: Text, _lastSession :: Maybe Text }
+data ProjectMeta = ProjectMeta { _uuid :: Text, _path :: Text, _lastSession :: Maybe Text }
   deriving ( Eq, Show, Generic )
 
 newtype ProjectIndex = ProjectIndex { _projects :: Map Text ProjectMeta }
   deriving ( Eq, Show, Generic )
 
 data ProjectEntry
-  = ProjectEntry { _projectRoot :: Text, _projectId :: Text, _entryLastSession :: Maybe Text }
+  = ProjectEntry { _projectName :: Text, _projectPath :: Text, _entryLastSession :: Maybe Text }
+  deriving ( Eq, Show, Generic )
+
+data LegacyProjectMeta
+  = LegacyProjectMeta { _legacyUuid :: Text, _legacyLastSession :: Maybe Text }
+  deriving ( Eq, Show, Generic )
+
+newtype LegacyProjectIndex = LegacyProjectIndex { _legacyProjects :: Map Text LegacyProjectMeta }
   deriving ( Eq, Show, Generic )
 
 makeFieldsNoPrefix ''ProjectMeta
@@ -78,6 +89,10 @@ makeFieldsNoPrefix ''ProjectMeta
 makeFieldsNoPrefix ''ProjectIndex
 
 makeFieldsNoPrefix ''ProjectEntry
+
+makeFieldsNoPrefix ''LegacyProjectMeta
+
+makeFieldsNoPrefix ''LegacyProjectIndex
 
 instance ToJSON ProjectMeta where
   toJSON = genericToJSON defaultOptions { fieldLabelModifier = drop 1 }
@@ -91,20 +106,27 @@ instance ToJSON ProjectIndex where
 instance FromJSON ProjectIndex where
   parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = drop 1 }
 
-runSnapshotGit :: Member (Embed IO) r => FilePath -> Sem (Snapshot ': r) a -> Sem r a
-runSnapshotGit rootPath = interpret $ \case
-  SaveSnapshot history -> embed $ saveSnapshotGit rootPath history
-  LoadSnapshot (SnapshotCommit c) -> embed $ loadSnapshotGit rootPath c
+instance FromJSON LegacyProjectMeta where
+  parseJSON = withObject "LegacyProjectMeta" $ \v
+    -> LegacyProjectMeta <$> v .: "uuid" <*> v .:? "lastSession"
 
-snapshotRepoPath :: FilePath -> IO FilePath
-snapshotRepoPath rootPath = do
+instance FromJSON LegacyProjectIndex where
+  parseJSON = withObject "LegacyProjectIndex" $ \v -> LegacyProjectIndex <$> v .: "projects"
+
+runSnapshotGit :: Member (Embed IO) r => FilePath -> Text -> Sem (Snapshot ': r) a -> Sem r a
+runSnapshotGit scopeRoot projectName = interpret $ \case
+  SaveSnapshot history -> embed $ saveSnapshotGit scopeRoot projectName history
+  LoadSnapshot (SnapshotCommit c) -> embed $ loadSnapshotGit scopeRoot projectName c
+
+snapshotRepoPath :: FilePath -> Text -> IO FilePath
+snapshotRepoPath scopeRoot projectName = do
   cacheRoot <- xdgCacheDir
-  projId <- getOrCreateProjectId rootPath
-  pure (cacheRoot </> "telos" </> "snapshots" </> Text.unpack projId)
+  meta <- getProjectMeta scopeRoot projectName
+  pure (cacheRoot </> "telos" </> "snapshots" </> Text.unpack (_uuid meta))
 
-saveSnapshotGit :: FilePath -> [ Message ] -> IO ()
-saveSnapshotGit rootPath history = do
-  repo <- snapshotRepoPath rootPath
+saveSnapshotGit :: FilePath -> Text -> [ Message ] -> IO ()
+saveSnapshotGit scopeRoot projectName history = do
+  repo <- snapshotRepoPath scopeRoot projectName
   ensureGitRepo repo
   let historyPath = repo </> "history.json"
   LBS.writeFile historyPath (encode history)
@@ -112,11 +134,11 @@ saveSnapshotGit rootPath history = do
   _ <- gitMaybe
     repo
     [ "-c", "user.name=telos", "-c", "user.email=telos@local", "commit", "-m", "snapshot" ]
-  updateLastSession rootPath
+  updateLastSession scopeRoot projectName
 
-loadSnapshotGit :: FilePath -> Text -> IO (Maybe [ Message ])
-loadSnapshotGit rootPath commitHash = do
-  repo <- snapshotRepoPath rootPath
+loadSnapshotGit :: FilePath -> Text -> Text -> IO (Maybe [ Message ])
+loadSnapshotGit scopeRoot projectName commitHash = do
+  repo <- snapshotRepoPath scopeRoot projectName
   exists <- doesDirectoryExist (repo </> ".git")
   if not exists
     then pure Nothing
@@ -137,80 +159,171 @@ ensureGitRepo repo = do
     _ <- git repo [ "init" ]
     pure ()
 
-indexPath :: IO FilePath
-indexPath = do
+indexPath :: FilePath -> IO FilePath
+indexPath scopeRoot = do
+  cacheRoot <- xdgCacheDir
+  let scopeHash = sha256Hex (Text.pack scopeRoot)
+  pure (cacheRoot </> "telos" </> "project-index" </> Text.unpack scopeHash <> ".json")
+
+legacyIndexPath :: IO FilePath
+legacyIndexPath = do
   cacheRoot <- xdgCacheDir
   pure (cacheRoot </> "telos" </> "project-index.json")
 
-loadIndex :: IO ProjectIndex
-loadIndex = do
-  path <- indexPath
+loadIndex :: FilePath -> IO ProjectIndex
+loadIndex scopeRoot = do
+  path <- indexPath scopeRoot
   exists <- doesFileExist path
-  if not exists
-    then pure (ProjectIndex Map.empty)
+  if exists
+    then readIndexFile path
     else do
-      bytes <- LBS.readFile path `catch` \e -> if isDoesNotExistError e
-        then pure "{}"
-        else throwIO e
-      case eitherDecodeStrict' (LBS.toStrict bytes) of
-        Left err  -> throwIO (userError ("Invalid project-index.json at " <> path <> ": " <> err))
-        Right idx -> pure idx
+      migrated <- migrateLegacyIndex scopeRoot
+      case migrated of
+        Just idx -> pure idx
+        Nothing  -> pure (ProjectIndex Map.empty)
 
-saveIndex :: ProjectIndex -> IO ()
-saveIndex idx = do
-  path <- indexPath
+readIndexFile :: FilePath -> IO ProjectIndex
+readIndexFile path = do
+  bytes <- LBS.readFile path `catch` \e -> if isDoesNotExistError e
+    then pure "{}"
+    else throwIO e
+  case eitherDecodeStrict' (LBS.toStrict bytes) of
+    Left err  -> throwIO (userError ("Invalid project-index.json at " <> path <> ": " <> err))
+    Right idx -> pure idx
+
+saveIndex :: FilePath -> ProjectIndex -> IO ()
+saveIndex scopeRoot idx = do
+  path <- indexPath scopeRoot
   createDirectoryIfMissing True (takeDirectory path)
   LBS.writeFile path (encode idx)
 
-getOrCreateProjectId :: FilePath -> IO Text
-getOrCreateProjectId rootPath = do
-  idx <- loadIndex
-  let key = Text.pack rootPath
-  case Map.lookup key (_projects idx) of
-    Just meta -> pure (_uuid meta)
-    Nothing   -> do
+createProject :: FilePath -> Text -> FilePath -> IO (Either Text ProjectEntry)
+createProject scopeRoot name path = do
+  idx <- loadIndex scopeRoot
+  if Map.member name (_projects idx)
+    then pure (Left "Project name already exists.")
+    else do
       newId <- newProjectId
-      let meta = ProjectMeta { _uuid = newId, _lastSession = Nothing }
-          idx' = idx { _projects = Map.insert key meta (_projects idx) }
-      saveIndex idx'
-      pure newId
+      let meta = ProjectMeta { _uuid = newId, _path = Text.pack path, _lastSession = Nothing }
+          idx' = idx { _projects = Map.insert name meta (_projects idx) }
+      saveIndex scopeRoot idx'
+      pure (Right (ProjectEntry name (_path meta) Nothing))
 
-ensureProject :: FilePath -> IO Text
-ensureProject = getOrCreateProjectId
+renameProject :: FilePath -> Text -> Text -> IO (Either Text ProjectEntry)
+renameProject scopeRoot oldName newName = do
+  idx <- loadIndex scopeRoot
+  if Map.member newName (_projects idx)
+    then pure (Left "Project name already exists.")
+    else case Map.lookup oldName (_projects idx) of
+      Nothing   -> pure (Left "Project name not found.")
+      Just meta -> do
+        let idx' = idx { _projects = Map.insert newName meta (Map.delete oldName (_projects idx)) }
+        saveIndex scopeRoot idx'
+        pure (Right (ProjectEntry newName (_path meta) (_lastSession meta)))
 
-listProjects :: IO [ ProjectEntry ]
-listProjects = map toEntry . Map.toList . _projects <$> loadIndex
+listProjects :: FilePath -> IO [ ProjectEntry ]
+listProjects scopeRoot = map toEntry . Map.toList . _projects <$> loadIndex scopeRoot
   where
-    toEntry ( root, meta )
+    toEntry ( name, meta )
       = ProjectEntry
-      { _projectRoot = root, _projectId = _uuid meta, _entryLastSession = _lastSession meta }
+      { _projectName = name, _projectPath = _path meta, _entryLastSession = _lastSession meta }
 
-updateLastSession :: FilePath -> IO ()
-updateLastSession rootPath = do
-  repo <- snapshotRepoPath rootPath
+getProjectMeta :: FilePath -> Text -> IO ProjectMeta
+getProjectMeta scopeRoot projectName = do
+  idx <- loadIndex scopeRoot
+  case Map.lookup projectName (_projects idx) of
+    Nothing   -> throwIO (userError ("Unknown project name: " <> Text.unpack projectName))
+    Just meta -> pure meta
+
+migrateLegacyIndex :: FilePath -> IO (Maybe ProjectIndex)
+migrateLegacyIndex scopeRoot = do
+  legacyPath <- legacyIndexPath
+  legacyExists <- doesFileExist legacyPath
+  if not legacyExists
+    then pure Nothing
+    else do
+      bytes <- LBS.readFile legacyPath `catch` \e -> if isDoesNotExistError e
+        then pure "{}"
+        else throwIO e
+      case eitherDecodeStrict' (LBS.toStrict bytes) of
+        Left _          -> pure Nothing
+        Right legacyIdx -> do
+          let scoped
+                = Map.filterWithKey
+                  (\path _ -> isRelated scopeRoot path)
+                  (_legacyProjects legacyIdx)
+          if Map.null scoped
+            then pure Nothing
+            else do
+              let migrated = Map.foldlWithKey' insertLegacy Map.empty scoped
+                  idx      = ProjectIndex migrated
+              saveIndex scopeRoot idx
+              pure (Just idx)
+  where
+    insertLegacy acc path meta
+      = let
+          baseName = deriveProjectName path
+          name     = uniqueName baseName acc
+          meta'
+            = ProjectMeta
+            { _uuid = _legacyUuid meta, _path = path, _lastSession = _legacyLastSession meta }
+        in 
+          Map.insert name meta' acc
+
+deriveProjectName :: Text -> Text
+deriveProjectName pathText
+  = let
+      base = Text.pack (takeFileName (Text.unpack pathText))
+    in 
+      if Text.null base
+        then "project"
+        else base
+
+uniqueName :: Text -> Map Text ProjectMeta -> Text
+uniqueName base existing
+  = if Map.member base existing
+    then go (2 :: Int)
+    else base
+  where
+    go n
+      = let
+          candidate = base <> "-" <> Text.pack (show n)
+        in 
+          if Map.member candidate existing
+            then go (n + 1)
+            else candidate
+
+isRelated :: FilePath -> Text -> Bool
+isRelated scopeRoot pathText
+  = let
+      rootText = Text.pack scopeRoot
+    in 
+      pathText == rootText || Text.isPrefixOf (rootText <> "/") pathText
+
+updateLastSession :: FilePath -> Text -> IO ()
+updateLastSession scopeRoot projectName = do
+  repo <- snapshotRepoPath scopeRoot projectName
   result <- gitMaybe repo [ "rev-parse", "HEAD" ]
   case result of
     Left _    -> pure ()
     Right out -> do
       let commitHash = Text.pack (takeWhile (/= '\n') out)
-      setLastSessionHash rootPath commitHash
+      setLastSessionHash scopeRoot projectName commitHash
 
-lastSessionHash :: FilePath -> IO (Maybe Text)
-lastSessionHash rootPath = do
-  idx <- loadIndex
-  let key = Text.pack rootPath
-  pure $ Map.lookup key (_projects idx) >>= _lastSession
+lastSessionHash :: FilePath -> Text -> IO (Maybe Text)
+lastSessionHash scopeRoot projectName = do
+  idx <- loadIndex scopeRoot
+  pure $ Map.lookup projectName (_projects idx) >>= _lastSession
 
-setLastSessionHash :: FilePath -> Text -> IO ()
-setLastSessionHash rootPath commitHash = do
-  idx <- loadIndex
-  let key = Text.pack rootPath
-  projId <- getOrCreateProjectId rootPath
-  let meta = case Map.lookup key (_projects idx) of
-        Just m  -> m { _lastSession = Just commitHash }
-        Nothing -> ProjectMeta { _uuid = projId, _lastSession = Just commitHash }
-      idx' = idx { _projects = Map.insert key meta (_projects idx) }
-  saveIndex idx'
+setLastSessionHash :: FilePath -> Text -> Text -> IO ()
+setLastSessionHash scopeRoot projectName commitHash = do
+  idx <- loadIndex scopeRoot
+  case Map.lookup projectName (_projects idx) of
+    Nothing   -> throwIO (userError ("Unknown project name: " <> Text.unpack projectName))
+    Just meta -> do
+      let meta' = meta { _lastSession = Just commitHash }
+          idx'  = idx { _projects = Map.insert projectName meta' (_projects idx) }
+      saveIndex scopeRoot idx'
 
 xdgCacheDir :: IO FilePath
 xdgCacheDir = do
@@ -229,17 +342,20 @@ gitMaybe cwd args = (Right <$> git cwd args) `catch` \e -> if isDoesNotExistErro
   then throwIO e
   else pure (Left e)
 
-newProjectId :: IO Text
-newProjectId = do
-  now <- getCurrentTime
-  let payload  = Text.pack (show now)
+sha256Hex :: Text -> Text
+sha256Hex payload
+  = let
       digest   = hash (encodeUtf8 payload) :: Digest SHA256
       hexBytes = convertToBase Base16 digest
-  pure (Text.pack (BS8.unpack hexBytes))
+    in 
+      Text.pack (BS8.unpack hexBytes)
 
-latestSnapshotHash :: FilePath -> IO (Maybe Text)
-latestSnapshotHash rootPath = do
-  repo <- snapshotRepoPath rootPath
+newProjectId :: IO Text
+newProjectId = sha256Hex . Text.pack . show <$> getCurrentTime
+
+latestSnapshotHash :: FilePath -> Text -> IO (Maybe Text)
+latestSnapshotHash scopeRoot projectName = do
+  repo <- snapshotRepoPath scopeRoot projectName
   exists <- doesDirectoryExist (repo </> ".git")
   if not exists
     then pure Nothing
@@ -249,9 +365,9 @@ latestSnapshotHash rootPath = do
         Left _    -> pure Nothing
         Right out -> pure (Just (Text.pack (takeWhile (/= '\n') out)))
 
-listSnapshots :: FilePath -> IO [ Text ]
-listSnapshots rootPath = do
-  repo <- snapshotRepoPath rootPath
+listSnapshots :: FilePath -> Text -> IO [ Text ]
+listSnapshots scopeRoot projectName = do
+  repo <- snapshotRepoPath scopeRoot projectName
   exists <- doesDirectoryExist (repo </> ".git")
   if not exists
     then pure []

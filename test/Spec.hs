@@ -1,41 +1,50 @@
 module Main ( main ) where
 
-import           Control.Exception  ( SomeException, bracket, try )
-import           Control.Monad      ( void )
+import           Control.Exception       ( SomeException, bracket, try )
+import           Control.Monad           ( void )
 
-import           Data.List          ( sortOn )
-import qualified Data.Text          as Text
+import           Crypto.Hash             ( Digest, SHA256, hash )
 
-import           Snapshot.Git       ( ProjectEntry(..)
-                                    , ensureProject
-                                    , lastSessionHash
-                                    , listProjects
-                                    )
+import           Data.ByteArray.Encoding ( Base(Base16), convertToBase )
+import qualified Data.ByteString.Char8   as BS8
+import           Data.List               ( sortOn )
+import           Data.Text               ( Text )
+import qualified Data.Text               as Text
+import           Data.Text.Encoding      ( encodeUtf8 )
 
-import           System.Directory   ( createDirectoryIfMissing
-                                    , getTemporaryDirectory
-                                    , removeDirectoryRecursive
-                                    )
-import           System.Environment ( lookupEnv, setEnv, unsetEnv )
-import           System.Exit        ( exitFailure )
-import           System.FilePath    ( (</>) )
-import           System.IO.Temp     ( createTempDirectory )
+import           Snapshot.Git            ( ProjectEntry(..)
+                                         , createProject
+                                         , listProjects
+                                         , renameProject
+                                         )
+
+import           System.Directory        ( createDirectoryIfMissing
+                                         , getTemporaryDirectory
+                                         , removeDirectoryRecursive
+                                         )
+import           System.Environment      ( lookupEnv, setEnv, unsetEnv )
+import           System.Exit             ( exitFailure )
+import           System.FilePath         ( (</>), takeDirectory )
+import           System.IO.Temp          ( createTempDirectory )
 
 main :: IO ()
 main = do
   ok1 <- testInvalidProjectIndexThrows
   ok2 <- testListProjectsReadsIndex
-  ok3 <- testEnsureProjectCreatesEntry
-  if ok1 && ok2 && ok3
+  ok3 <- testCreateProjectRejectsDuplicate
+  ok4 <- testRenameProject
+  ok5 <- testLegacyMigration
+  if and [ ok1, ok2, ok3, ok4, ok5 ]
     then putStrLn "All tests passed"
     else exitFailure
 
 testInvalidProjectIndexThrows :: IO Bool
 testInvalidProjectIndexThrows = withTempCache $ \tempDir -> do
-  let indexDir = tempDir </> "telos"
-  createDirectoryIfMissing True indexDir
-  writeFile (indexDir </> "project-index.json") "{ invalid json"
-  result <- try (void (lastSessionHash "/tmp/telos-project")) :: IO (Either SomeException ())
+  let scopeRoot = "/tmp/telos-project"
+      path      = indexPathFor tempDir scopeRoot
+  createDirectoryIfMissing True (takeDirectory path)
+  writeFile path "{ invalid json"
+  result <- try (void (listProjects scopeRoot)) :: IO (Either SomeException ())
   case result of
     Left _  -> pure True
     Right _ -> do
@@ -44,41 +53,96 @@ testInvalidProjectIndexThrows = withTempCache $ \tempDir -> do
 
 testListProjectsReadsIndex :: IO Bool
 testListProjectsReadsIndex = withTempCache $ \tempDir -> do
-  let indexDir = tempDir </> "telos"
-  createDirectoryIfMissing True indexDir
-  writeFile (indexDir </> "project-index.json") indexJson
-  entries <- listProjects
-  let roots = sortOn id (map _projectRoot entries)
-  if roots == sortOn id expectedRoots
+  let scopeRoot = "/tmp/telos-project"
+      path      = indexPathFor tempDir scopeRoot
+  createDirectoryIfMissing True (takeDirectory path)
+  writeFile path indexJson
+  entries <- listProjects scopeRoot
+  let names = sortOn id (map _projectName entries)
+  if names == sortOn id expectedNames
     then pure True
     else do
-      putStrLn ("Expected roots " <> show expectedRoots <> ", got " <> show roots)
+      putStrLn ("Expected names " <> show expectedNames <> ", got " <> show names)
       pure False
   where
-    expectedRoots = map Text.pack [ "/tmp/proj-a", "/tmp/proj-b" ]
+    expectedNames = map Text.pack [ "demo", "work" ]
 
     indexJson
       = "{\n"
       <> "  \"projects\": {\n"
-      <> "    \"/tmp/proj-a\": { \"uuid\": \"id-a\", \"lastSession\": \"hash-a\" },\n"
-      <> "    \"/tmp/proj-b\": { \"uuid\": \"id-b\", \"lastSession\": null }\n"
+      <> "    \"demo\": { \"uuid\": \"id-a\", \"path\": \"/tmp/proj-a\", \"lastSession\": \"hash-a\" },\n"
+      <> "    \"work\": { \"uuid\": \"id-b\", \"path\": \"/tmp/proj-b\", \"lastSession\": null }\n"
       <> "  }\n"
       <> "}\n"
 
-testEnsureProjectCreatesEntry :: IO Bool
-testEnsureProjectCreatesEntry = withTempCache $ \_ -> do
-  projectId <- ensureProject "/tmp/proj-c"
-  entries <- listProjects
-  let roots = map _projectRoot entries
-  if Text.null projectId
-    then do
-      putStrLn "Expected ensureProject to return a non-empty project id"
+testCreateProjectRejectsDuplicate :: IO Bool
+testCreateProjectRejectsDuplicate = withTempCache $ \_ -> do
+  let scopeRoot = "/tmp/telos-project"
+  first <- createProject scopeRoot "demo" "/tmp/proj"
+  second <- createProject scopeRoot "demo" "/tmp/proj"
+  case ( first, second ) of
+    ( Right _, Left _ ) -> pure True
+    _ -> do
+      putStrLn "Expected duplicate project name to be rejected"
       pure False
-    else if Text.pack "/tmp/proj-c" `elem` roots
-      then pure True
-      else do
-        putStrLn "Expected ensureProject to create entry for /tmp/proj-c"
-        pure False
+
+testRenameProject :: IO Bool
+testRenameProject = withTempCache $ \_ -> do
+  let scopeRoot = "/tmp/telos-project"
+  created <- createProject scopeRoot "untitled-1" "/tmp/proj"
+  case created of
+    Left err -> do
+      putStrLn ("Unexpected create failure: " <> Text.unpack err)
+      pure False
+    Right _  -> do
+      renamed <- renameProject scopeRoot "untitled-1" "demo"
+      case renamed of
+        Left err -> do
+          putStrLn ("Unexpected rename failure: " <> Text.unpack err)
+          pure False
+        Right _  -> do
+          entries <- listProjects scopeRoot
+          let names = map _projectName entries
+          if Text.pack "demo" `elem` names && Text.pack "untitled-1" `notElem` names
+            then pure True
+            else do
+              putStrLn "Expected rename to update project name"
+              pure False
+
+testLegacyMigration :: IO Bool
+testLegacyMigration = withTempCache $ \tempDir -> do
+  let scopeRoot  = "/tmp/work"
+      legacyPath = tempDir </> "telos" </> "project-index.json"
+  createDirectoryIfMissing True (takeDirectory legacyPath)
+  writeFile legacyPath legacyJson
+  entries <- listProjects scopeRoot
+  let paths = map _projectPath entries
+  if Text.pack "/tmp/work" `elem` paths && Text.pack "/other" `notElem` paths
+    then pure True
+    else do
+      putStrLn "Expected legacy migration to scope entries by path"
+      pure False
+  where
+    legacyJson
+      = "{\n"
+      <> "  \"projects\": {\n"
+      <> "    \"/tmp/work\": { \"uuid\": \"id-a\", \"lastSession\": \"hash-a\" },\n"
+      <> "    \"/other\": { \"uuid\": \"id-b\", \"lastSession\": null }\n"
+      <> "  }\n"
+      <> "}\n"
+
+indexPathFor :: FilePath -> FilePath -> FilePath
+indexPathFor cacheRoot scopeRoot
+  = cacheRoot </> "telos" </> "project-index" </> Text.unpack (sha256Hex (Text.pack scopeRoot))
+  <> ".json"
+
+sha256Hex :: Text -> Text
+sha256Hex payload
+  = let
+      digest   = hash (encodeUtf8 payload) :: Digest SHA256
+      hexBytes = convertToBase Base16 digest
+    in 
+      Text.pack (BS8.unpack hexBytes)
 
 withTempCache :: (FilePath -> IO Bool) -> IO Bool
 withTempCache action = do
