@@ -67,6 +67,7 @@ default-extensions:
   - RankNTypes
   - ScopedTypeVariables
   - TupleSections
+  - ViewPatterns
 
 library:
   source-dirs: src

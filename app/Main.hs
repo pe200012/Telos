@@ -5,7 +5,7 @@ module Main ( main ) where
 import           Config                   ( Config, loadConfig )
 
 import           Control.Lens             ( (^.), non )
-import           Control.Monad            ( when )
+import           Control.Monad            ( unless, when )
 
 import           Data.Char                ( isAlphaNum )
 import           Data.Foldable            ( for_ )
@@ -83,38 +83,32 @@ main = do
          -> FilePath
          -> Sem r ()
     loop cfg scopeRoot = embed @InputIO (getInputLine "% ") >>= \case
-      Nothing     -> pure ()
+      Nothing -> pure ()
       Just "quit" -> pure ()
-      Just input  -> do
-        let raw = Text.pack input
-        if Text.isPrefixOf ">" raw
+      Just (Text.pack -> input) -> do
+        if Text.isPrefixOf ">" input
           then do
-            let message = Text.stripStart (Text.drop 1 raw)
-            if Text.null message
-              then pure ()
-              else do
-                current <- get @SnapshotCommit
-                currentProject <- get @ProjectEntry
-                runInputConst cfg $ do
-                  ( updatedHistory, _ )
-                    <- runSnapshotGit scopeRoot (_projectName currentProject) $ do
-                      initial <- loadSnapshot current
-                      let startingHistory = initial ^. non []
-                      ( updatedHistory, reply ) <- runState startingHistory $ do
-                        let userMsg = Message { _role = User, _content = message }
-                        modify (userMsg :)
-                        reply <- runLLMHttp $ askLLM userMsg
-                        modify (Message { _role = Assistant, _content = reply } :)
-                        pure reply
-                      saveSnapshot updatedHistory
-                      pure ( updatedHistory, reply )
-                  maybeGenerateTitle scopeRoot updatedHistory
-                  pure ()
+            let message = Text.stripStart (Text.drop 1 input)
+            unless (Text.null message) $ do
+              current <- get @SnapshotCommit
+              currentProject <- get @ProjectEntry
+              runInputConst cfg $ do
+                ( updatedHistory, _ ) <- runSnapshotGit scopeRoot (_projectName currentProject) $ do
+                  initial <- loadSnapshot current
+                  let startingHistory = initial ^. non []
+                  ( updatedHistory, reply ) <- runState startingHistory $ do
+                    let userMsg = Message { _role = User, _content = message }
+                    modify (userMsg :)
+                    reply <- runLLMHttp $ askLLM userMsg
+                    modify (Message { _role = Assistant, _content = reply } :)
+                    pure reply
+                  saveSnapshot updatedHistory
+                  pure ( updatedHistory, reply )
+                maybeGenerateTitle scopeRoot updatedHistory
+                pure ()
           else do
-            handled <- handleCommand scopeRoot (Text.strip raw)
-            if handled
-              then pure ()
-              else embed @IO $ putStrLn "Unknown command. Use > to chat."
+            handled <- handleCommand scopeRoot (Text.strip input)
+            unless handled $ embed @IO $ putStrLn "Unknown command. Use > to chat."
         loop cfg scopeRoot
 
 handleCommand :: Members '[ State SnapshotCommit, State ProjectEntry, Embed IO ] r
