@@ -21,15 +21,12 @@ import           Control.Lens             ( (^?), view )
 import           Control.Lens.TH          ( makeFieldsNoPrefix )
 import           Control.Monad.IO.Class   ( liftIO )
 
-import           Data.Aeson               ( FromJSON(parseJSON)
-                                          , ToJSON(toJSON)
-                                          , Value(String)
+import           Data.Aeson               ( ToJSON(toJSON)
+                                          , Value
                                           , defaultOptions
                                           , eitherDecodeStrict'
                                           , fieldLabelModifier
-                                          , genericParseJSON
                                           , genericToJSON
-                                          , withText
                                           )
 import           Data.Aeson.Lens          ( _String, key, nth )
 import qualified Data.ByteString          as BS
@@ -58,34 +55,11 @@ import           Network.HTTP.Simple      ( getResponseBody
 
 import           Polysemy                 ( Embed, Members, Sem, embed, interpret )
 import           Polysemy.Input           ( Input, input )
+import           Polysemy.State           ( State, get )
 
 import           System.IO                ( hFlush, stdout )
 
-data Role = System | User | Assistant
-  deriving ( Eq, Show )
-
-instance ToJSON Role where
-  toJSON System    = String "system"
-  toJSON User      = String "user"
-  toJSON Assistant = String "assistant"
-
-instance FromJSON Role where
-  parseJSON = withText "Role" $ \case
-    "system"    -> pure System
-    "user"      -> pure User
-    "assistant" -> pure Assistant
-    _           -> fail "unknown role"
-
-data Message = Message { _role :: Role, _content :: Text }
-  deriving ( Eq, Show, Generic )
-
-instance ToJSON Message where
-  toJSON = genericToJSON defaultOptions { fieldLabelModifier = drop 1 }
-
-instance FromJSON Message where
-  parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = drop 1 }
-
-makeFieldsNoPrefix ''Message
+import           Types.Chat               ( Message(..), Role(..) )
 
 data ChatRequest
   = ChatRequest
@@ -97,14 +71,20 @@ instance ToJSON ChatRequest where
 
 makeFieldsNoPrefix ''ChatRequest
 
-runLLMHttp :: Members '[ Embed IO, Input Config ] r => Sem (LLM ': r) a -> Sem r a
+runLLMHttp
+  :: Members '[ Embed IO, Input Config, State [ Message ] ] r => Sem (LLM ': r) a -> Sem r a
 runLLMHttp = interpret $ \case
-  AskLLM prompt -> do
+  AskLLM msg -> do
     cfg <- input @Config
+    history <- get
+    let messagesToSend
+          = if null history
+            then [ msg ]
+            else reverse history
     req0 <- embed @IO $ parseRequest (Text.unpack (view baseUrl cfg))
     let payload
           = ChatRequest { _model       = view model cfg
-                        , _messages    = [ Message { _role = User, _content = prompt } ]
+                        , _messages    = messagesToSend
                         , _temperature = view temperature cfg
                         , _stream      = True
                         }

@@ -27,8 +27,10 @@ library
   exposed-modules:
       Config
       Effects.LLM
+      Effects.Snapshot
       Lib
       LLM.Http
+      Types.Chat
   other-modules:
       Paths_Telos
   autogen-modules:
