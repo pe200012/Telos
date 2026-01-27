@@ -69,26 +69,35 @@ main = do
         Nothing     -> pure ()
         Just "quit" -> pure ()
         Just input  -> do
-          handled <- handleCommand scopeRoot (Text.pack input)
-          if handled
-            then pure ()
+          let raw = Text.pack input
+          if Text.isPrefixOf ">" raw
+            then do
+              let message = Text.stripStart (Text.drop 1 raw)
+              if Text.null message
+                then pure ()
+                else do
+                  current <- get @SnapshotCommit
+                  currentProject <- get @ProjectEntry
+                  runInputConst cfg $ do
+                    ( updatedHistory, _ )
+                      <- runSnapshotGit scopeRoot (_projectName currentProject) $ do
+                        initial <- loadSnapshot current
+                        let startingHistory = initial ^. non []
+                        ( updatedHistory, reply ) <- runState startingHistory $ do
+                          let userMsg = Message { _role = User, _content = message }
+                          modify (userMsg :)
+                          reply <- runLLMHttp $ askLLM userMsg
+                          modify (Message { _role = Assistant, _content = reply } :)
+                          pure reply
+                        saveSnapshot updatedHistory
+                        pure ( updatedHistory, reply )
+                    maybeGenerateTitle scopeRoot updatedHistory
+                    pure ()
             else do
-              current <- get @SnapshotCommit
-              currentProject <- get @ProjectEntry
-              runInputConst cfg $ do
-                ( updatedHistory, _ ) <- runSnapshotGit scopeRoot (_projectName currentProject) $ do
-                  initial <- loadSnapshot current
-                  let startingHistory = initial ^. non []
-                  ( updatedHistory, reply ) <- runState startingHistory $ do
-                    let userMsg = Message { _role = User, _content = Text.pack input }
-                    modify (userMsg :)
-                    reply <- runLLMHttp $ askLLM userMsg
-                    modify (Message { _role = Assistant, _content = reply } :)
-                    pure reply
-                  saveSnapshot updatedHistory
-                  pure ( updatedHistory, reply )
-                maybeGenerateTitle scopeRoot updatedHistory
-                pure ()
+              handled <- handleCommand scopeRoot (Text.strip raw)
+              if handled
+                then pure ()
+                else embed @IO $ putStrLn "Unknown command. Use > to chat."
           loop cfg scopeRoot
 
 handleCommand :: Members '[ State SnapshotCommit, State ProjectEntry, Embed IO ] r
@@ -175,7 +184,7 @@ handleCommand scopeRoot input
       = let
           lastText = maybe "-" Text.unpack (_entryLastSession entry)
           nameText = Text.unpack (_projectName entry)
-        in 
+        in
           if groupPath == scopeText
             then "  " <> nameText <> "  " <> lastText
             else "  " <> Text.unpack groupPath <> "  " <> nameText <> "  " <> lastText
@@ -189,7 +198,7 @@ handleCommand scopeRoot input
             System    -> "System"
             User      -> "User"
             Assistant -> "Assistant"
-        in 
+        in
           label <> ": " <> Text.unpack (_content msg)
 
     createOrSwitch rootPath mName mPath = do
@@ -248,7 +257,7 @@ nextPlaceholderName existing = go (1 :: Int)
     go n
       = let
           candidate = "untitled-" <> Text.pack (show n)
-        in 
+        in
           if candidate `elem` existing
             then go (n + 1)
             else candidate
@@ -310,7 +319,7 @@ titlePrompt history
           , "Return only the title on a single line."
           , "Conversation:"
           ]
-    in 
+    in
       Text.unlines (header <> map formatMessage history)
 
 formatMessage :: Message -> Text
@@ -320,7 +329,7 @@ formatMessage msg
         System    -> "System"
         User      -> "User"
         Assistant -> "Assistant"
-    in 
+    in
       label <> ": " <> Text.take 200 (_content msg)
 
 sanitizeTitle :: Text -> Maybe Text
@@ -330,7 +339,7 @@ sanitizeTitle raw
       cleaned    = Text.filter (\c -> isAlphaNum c || c == ' ' || c == '-') line
       normalized = Text.unwords (Text.words cleaned)
       trimmed    = Text.take 60 normalized
-    in 
+    in
       if Text.null trimmed
         then Nothing
         else Just trimmed
@@ -344,7 +353,7 @@ makeUniqueName desired existing
     go n
       = let
           candidate = desired <> "-" <> Text.pack (show n)
-        in 
+        in
           if candidate `elem` existing
             then go (n + 1)
             else candidate
