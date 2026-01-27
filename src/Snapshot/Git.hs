@@ -27,9 +27,7 @@ import           Control.Monad           ( unless )
 
 import           Crypto.Hash             ( Digest, SHA256, hash )
 
-import           Data.Aeson              ( (.:)
-                                         , (.:?)
-                                         , FromJSON(parseJSON)
+import           Data.Aeson              ( FromJSON(parseJSON)
                                          , ToJSON(toJSON)
                                          , defaultOptions
                                          , eitherDecodeStrict'
@@ -37,7 +35,6 @@ import           Data.Aeson              ( (.:)
                                          , fieldLabelModifier
                                          , genericParseJSON
                                          , genericToJSON
-                                         , withObject
                                          )
 import           Data.ByteArray.Encoding ( Base(Base16), convertToBase )
 import qualified Data.ByteString.Char8   as BS8
@@ -61,7 +58,7 @@ import           System.Directory        ( createDirectoryIfMissing
                                          , getHomeDirectory
                                          )
 import           System.Environment      ( lookupEnv )
-import           System.FilePath         ( (</>), takeDirectory, takeFileName )
+import           System.FilePath         ( (</>), takeDirectory )
 import           System.IO.Error         ( isDoesNotExistError )
 import           System.Process          ( readProcess )
 
@@ -77,22 +74,11 @@ data ProjectEntry
   = ProjectEntry { _projectName :: Text, _projectPath :: Text, _entryLastSession :: Maybe Text }
   deriving ( Eq, Show, Generic )
 
-data LegacyProjectMeta
-  = LegacyProjectMeta { _legacyUuid :: Text, _legacyLastSession :: Maybe Text }
-  deriving ( Eq, Show, Generic )
-
-newtype LegacyProjectIndex = LegacyProjectIndex { _legacyProjects :: Map Text LegacyProjectMeta }
-  deriving ( Eq, Show, Generic )
-
 makeFieldsNoPrefix ''ProjectMeta
 
 makeFieldsNoPrefix ''ProjectIndex
 
 makeFieldsNoPrefix ''ProjectEntry
-
-makeFieldsNoPrefix ''LegacyProjectMeta
-
-makeFieldsNoPrefix ''LegacyProjectIndex
 
 instance ToJSON ProjectMeta where
   toJSON = genericToJSON defaultOptions { fieldLabelModifier = drop 1 }
@@ -105,13 +91,6 @@ instance ToJSON ProjectIndex where
 
 instance FromJSON ProjectIndex where
   parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = drop 1 }
-
-instance FromJSON LegacyProjectMeta where
-  parseJSON = withObject "LegacyProjectMeta" $ \v
-    -> LegacyProjectMeta <$> v .: "uuid" <*> v .:? "lastSession"
-
-instance FromJSON LegacyProjectIndex where
-  parseJSON = withObject "LegacyProjectIndex" $ \v -> LegacyProjectIndex <$> v .: "projects"
 
 runSnapshotGit :: Member (Embed IO) r => FilePath -> Text -> Sem (Snapshot ': r) a -> Sem r a
 runSnapshotGit scopeRoot projectName = interpret $ \case
@@ -165,22 +144,13 @@ indexPath scopeRoot = do
   let scopeHash = sha256Hex (Text.pack scopeRoot)
   pure (cacheRoot </> "telos" </> "project-index" </> Text.unpack scopeHash <> ".json")
 
-legacyIndexPath :: IO FilePath
-legacyIndexPath = do
-  cacheRoot <- xdgCacheDir
-  pure (cacheRoot </> "telos" </> "project-index.json")
-
 loadIndex :: FilePath -> IO ProjectIndex
 loadIndex scopeRoot = do
   path <- indexPath scopeRoot
   exists <- doesFileExist path
   if exists
     then readIndexFile path
-    else do
-      migrated <- migrateLegacyIndex scopeRoot
-      case migrated of
-        Just idx -> pure idx
-        Nothing  -> pure (ProjectIndex Map.empty)
+    else pure (ProjectIndex Map.empty)
 
 readIndexFile :: FilePath -> IO ProjectIndex
 readIndexFile path = do
@@ -234,71 +204,6 @@ getProjectMeta scopeRoot projectName = do
   case Map.lookup projectName (_projects idx) of
     Nothing   -> throwIO (userError ("Unknown project name: " <> Text.unpack projectName))
     Just meta -> pure meta
-
-migrateLegacyIndex :: FilePath -> IO (Maybe ProjectIndex)
-migrateLegacyIndex scopeRoot = do
-  legacyPath <- legacyIndexPath
-  legacyExists <- doesFileExist legacyPath
-  if not legacyExists
-    then pure Nothing
-    else do
-      bytes <- LBS.readFile legacyPath `catch` \e -> if isDoesNotExistError e
-        then pure "{}"
-        else throwIO e
-      case eitherDecodeStrict' (LBS.toStrict bytes) of
-        Left _          -> pure Nothing
-        Right legacyIdx -> do
-          let scoped
-                = Map.filterWithKey
-                  (\path _ -> isRelated scopeRoot path)
-                  (_legacyProjects legacyIdx)
-          if Map.null scoped
-            then pure Nothing
-            else do
-              let migrated = Map.foldlWithKey' insertLegacy Map.empty scoped
-                  idx      = ProjectIndex migrated
-              saveIndex scopeRoot idx
-              pure (Just idx)
-  where
-    insertLegacy acc path meta
-      = let
-          baseName = deriveProjectName path
-          name     = uniqueName baseName acc
-          meta'
-            = ProjectMeta
-            { _uuid = _legacyUuid meta, _path = path, _lastSession = _legacyLastSession meta }
-        in 
-          Map.insert name meta' acc
-
-deriveProjectName :: Text -> Text
-deriveProjectName pathText
-  = let
-      base = Text.pack (takeFileName (Text.unpack pathText))
-    in 
-      if Text.null base
-        then "project"
-        else base
-
-uniqueName :: Text -> Map Text ProjectMeta -> Text
-uniqueName base existing
-  = if Map.member base existing
-    then go (2 :: Int)
-    else base
-  where
-    go n
-      = let
-          candidate = base <> "-" <> Text.pack (show n)
-        in 
-          if Map.member candidate existing
-            then go (n + 1)
-            else candidate
-
-isRelated :: FilePath -> Text -> Bool
-isRelated scopeRoot pathText
-  = let
-      rootText = Text.pack scopeRoot
-    in 
-      pathText == rootText || Text.isPrefixOf (rootText <> "/") pathText
 
 updateLastSession :: FilePath -> Text -> IO ()
 updateLastSession scopeRoot projectName = do
