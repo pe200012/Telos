@@ -28,5 +28,7 @@ main = runInputT defaultSettings loop
         Just "quit" -> pure ()
         Just input  -> do
           response <- liftIO $ runM $ runLLMHttp $ askLLM (Text.pack input)
-          outputStrLn (Text.unpack response)
+          if Text.null response
+            then pure ()
+            else outputStrLn (Text.unpack response)
           loop

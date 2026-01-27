@@ -25,7 +25,10 @@ dependencies:
   - base >= 4.7 && < 5
   - aeson
   - bytestring
+  - conduit
+  - conduit-extra
   - http-conduit
+  - http-client
   - lens
   - lens-aeson
   - polysemy

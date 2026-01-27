@@ -51,7 +51,10 @@ library
       aeson
     , base >=4.7 && <5
     , bytestring
+    , conduit
+    , conduit-extra
     , haskeline
+    , http-client
     , http-conduit
     , lens
     , lens-aeson
@@ -85,7 +88,10 @@ executable Telos-exe
     , aeson
     , base >=4.7 && <5
     , bytestring
+    , conduit
+    , conduit-extra
     , haskeline
+    , http-client
     , http-conduit
     , lens
     , lens-aeson
@@ -120,7 +126,10 @@ test-suite Telos-test
     , aeson
     , base >=4.7 && <5
     , bytestring
+    , conduit
+    , conduit-extra
     , haskeline
+    , http-client
     , http-conduit
     , lens
     , lens-aeson
