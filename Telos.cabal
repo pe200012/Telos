@@ -1,0 +1,129 @@
+cabal-version: 2.2
+
+-- This file has been generated from package.yaml by hpack version 0.38.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           Telos
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/pe200012/Telos#readme>
+homepage:       https://github.com/pe200012/Telos#readme
+bug-reports:    https://github.com/pe200012/Telos/issues
+author:         pe200012
+maintainer:     1326263755@qq.com
+copyright:      2026 pe200012
+license:        BSD-3-Clause
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/pe200012/Telos
+
+library
+  exposed-modules:
+      Effects.LLM
+      Lib
+      LLM.Http
+  other-modules:
+      Paths_Telos
+  autogen-modules:
+      Paths_Telos
+  hs-source-dirs:
+      src
+  default-extensions:
+      BangPatterns
+      DerivingStrategies
+      FlexibleContexts
+      FlexibleInstances
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      OverloadedStrings
+      RankNTypes
+      ScopedTypeVariables
+      TupleSections
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , haskeline
+    , http-conduit
+    , lens
+    , lens-aeson
+    , polysemy
+    , text
+  default-language: GHC2021
+
+executable Telos-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_Telos
+  autogen-modules:
+      Paths_Telos
+  hs-source-dirs:
+      app
+  default-extensions:
+      BangPatterns
+      DerivingStrategies
+      FlexibleContexts
+      FlexibleInstances
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      OverloadedStrings
+      RankNTypes
+      ScopedTypeVariables
+      TupleSections
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Telos
+    , aeson
+    , base >=4.7 && <5
+    , bytestring
+    , haskeline
+    , http-conduit
+    , lens
+    , lens-aeson
+    , polysemy
+    , text
+  default-language: GHC2021
+
+test-suite Telos-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_Telos
+  autogen-modules:
+      Paths_Telos
+  hs-source-dirs:
+      test
+  default-extensions:
+      BangPatterns
+      DerivingStrategies
+      FlexibleContexts
+      FlexibleInstances
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      OverloadedStrings
+      RankNTypes
+      ScopedTypeVariables
+      TupleSections
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Telos
+    , aeson
+    , base >=4.7 && <5
+    , bytestring
+    , haskeline
+    , http-conduit
+    , lens
+    , lens-aeson
+    , polysemy
+    , text
+  default-language: GHC2021
