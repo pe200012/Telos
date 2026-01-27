@@ -27,6 +27,8 @@ dependencies:
   - bytestring
   - conduit
   - conduit-extra
+  - containers
+  - crypton
   - directory
   - filepath
   - haskeline
@@ -34,8 +36,11 @@ dependencies:
   - http-client
   - lens
   - lens-aeson
+  - memory
   - polysemy
+  - process
   - text
+  - time
   - tomland
 
 ghc-options:
@@ -86,3 +91,6 @@ tests:
       - -with-rtsopts=-N
     dependencies:
       - Telos
+      - directory
+      - filepath
+      - temporary

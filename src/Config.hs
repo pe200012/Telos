@@ -15,9 +15,8 @@ module Config
   , loadConfig
   ) where
 
-import           Control.Lens       ( (&), (.~), makeFieldsNoPrefix )
+import           Control.Lens       ( (&), (.~), (^.), makeFieldsNoPrefix, non )
 
-import           Data.Maybe         ( fromMaybe )
 import           Data.Text          ( Text )
 import qualified Data.Text          as Text
 import qualified Data.Text.IO       as TIO
@@ -58,7 +57,7 @@ configPath :: IO FilePath
 configPath = do
   mXdg <- lookupEnv "XDG_CONFIG_HOME"
   home <- getHomeDirectory
-  let base = fromMaybe (home </> ".config") mXdg
+  let base = mXdg ^. non (home </> ".config")
   pure (base </> "telos" </> "config.toml")
 
 loadConfig :: IO (Either Text Config)

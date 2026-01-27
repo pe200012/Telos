@@ -30,6 +30,7 @@ library
       Effects.Snapshot
       Lib
       LLM.Http
+      Snapshot.Git
       Types.Chat
   other-modules:
       Paths_Telos
@@ -56,6 +57,8 @@ library
     , bytestring
     , conduit
     , conduit-extra
+    , containers
+    , crypton
     , directory
     , filepath
     , haskeline
@@ -63,8 +66,11 @@ library
     , http-conduit
     , lens
     , lens-aeson
+    , memory
     , polysemy
+    , process
     , text
+    , time
     , tomland
   default-language: GHC2021
 
@@ -96,6 +102,8 @@ executable Telos-exe
     , bytestring
     , conduit
     , conduit-extra
+    , containers
+    , crypton
     , directory
     , filepath
     , haskeline
@@ -103,8 +111,11 @@ executable Telos-exe
     , http-conduit
     , lens
     , lens-aeson
+    , memory
     , polysemy
+    , process
     , text
+    , time
     , tomland
   default-language: GHC2021
 
@@ -137,6 +148,8 @@ test-suite Telos-test
     , bytestring
     , conduit
     , conduit-extra
+    , containers
+    , crypton
     , directory
     , filepath
     , haskeline
@@ -144,7 +157,11 @@ test-suite Telos-test
     , http-conduit
     , lens
     , lens-aeson
+    , memory
     , polysemy
+    , process
+    , temporary
     , text
+    , time
     , tomland
   default-language: GHC2021
