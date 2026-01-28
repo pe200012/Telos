@@ -16,18 +16,25 @@ import           Polysemy           ( Embed, Member, Sem, embed, interpret )
 import           Relude
 
 import           System.Directory   ( canonicalizePath
+                                    , createDirectoryIfMissing
                                     , doesDirectoryExist
                                     , doesFileExist
                                     , listDirectory
                                     , makeAbsolute
                                     )
-import           System.FilePath    ( (</>), addTrailingPathSeparator, isAbsolute, normalise )
+import           System.FilePath    ( (</>)
+                                    , addTrailingPathSeparator
+                                    , isAbsolute
+                                    , normalise
+                                    , takeDirectory
+                                    )
 import           System.IO.Error    ( userError )
 
 runFileSystemLocal :: Member (Embed IO) r => FilePath -> Sem (FileSystem ': r) a -> Sem r a
 runFileSystemLocal scopeRoot = interpret $ \case
-  ListFiles path -> embed @IO $ listFilesLocal scopeRoot path
-  ReadText path  -> embed @IO $ readTextLocal scopeRoot path
+  ListFiles path         -> embed @IO $ listFilesLocal scopeRoot path
+  ReadText path          -> embed @IO $ readTextLocal scopeRoot path
+  WriteText path content -> embed @IO $ writeTextLocal scopeRoot path content
 
 listFilesLocal :: FilePath -> FilePath -> IO [ FilePath ]
 listFilesLocal scopeRoot inputPath = do
@@ -70,6 +77,12 @@ readTextLocal scopeRoot inputPath = do
         else case Text.decodeUtf8' content of
           Left _     -> pure Nothing
           Right text -> pure (Just text)
+
+writeTextLocal :: FilePath -> FilePath -> Text -> IO ()
+writeTextLocal scopeRoot inputPath content = do
+  absPath <- resolvePath scopeRoot inputPath
+  createDirectoryIfMissing True (takeDirectory absPath)
+  BS.writeFile absPath (Text.encodeUtf8 content)
 
 resolvePath :: FilePath -> FilePath -> IO FilePath
 resolvePath scopeRoot inputPath = do

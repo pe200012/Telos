@@ -6,10 +6,12 @@
 
 module Config
   ( Config
+  , Provider(..)
   , HasApiKey(..)
   , HasBaseUrl(..)
   , HasModel(..)
   , HasTemperature(..)
+  , HasProvider(..)
   , configCodec
   , configPath
   , loadConfig
@@ -28,21 +30,45 @@ import           System.FilePath  ( (</>), takeDirectory )
 import           Toml             ( (.=), TomlCodec )
 import qualified Toml
 
-data Config = Config { _apiKey :: Text, _baseUrl :: Text, _model :: Text, _temperature :: Double }
+data Provider = ZhipuAI | OpenAI
+  deriving ( Eq, Show, Generic )
+
+makeFieldsNoPrefix ''Provider
+
+data Config
+  = Config { _provider    :: Provider
+           , _apiKey      :: Text
+           , _baseUrl     :: Text
+           , _model       :: Text
+           , _temperature :: Double
+           }
   deriving ( Eq, Show, Generic )
 
 makeFieldsNoPrefix ''Config
 
 configCodec :: TomlCodec Config
 configCodec
-  = Config <$> Toml.text "api_key" .= _apiKey
+  = Config <$> providerCodec .= _provider
+  <*> Toml.text "api_key" .= _apiKey
+  <*> Toml.text "base_url" .= _baseUrl
+  <*> Toml.text "model" .= _model
+  <*> Toml.double "temperature" .= _temperature
+
+legacyConfigCodec :: TomlCodec Config
+legacyConfigCodec
+  = (\apiKeyText baseUrlText modelText temp -> defaultConfig
+     & apiKey .~ apiKeyText
+     & baseUrl .~ baseUrlText
+     & model .~ modelText
+     & temperature .~ temp) <$> Toml.text "api_key" .= _apiKey
   <*> Toml.text "base_url" .= _baseUrl
   <*> Toml.text "model" .= _model
   <*> Toml.double "temperature" .= _temperature
 
 defaultConfig :: Config
 defaultConfig
-  = Config { _apiKey      = ""
+  = Config { _provider    = ZhipuAI
+           , _apiKey      = ""
            , _baseUrl     = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
            , _model       = "glm-4.7-flash"
            , _temperature = 0.7
@@ -70,8 +96,33 @@ loadConfig = do
     else do
       decoded <- Toml.decodeFileExact configCodec path
       case decoded of
-        Left err  -> pure $ Left (Text.pack (show err))
         Right cfg -> do
-          mKey <- lookupEnv "ZHIPUAI_API_KEY"
+          mKey <- lookupEnv (apiKeyEnv (cfg ^. provider))
           let cfg' = maybe cfg (\k -> cfg & apiKey .~ Text.pack k) mKey
           pure (Right cfg')
+        Left err  -> do
+          legacy <- Toml.decodeFileExact legacyConfigCodec path
+          case legacy of
+            Right cfg -> do
+              TIO.writeFile path (renderConfigToml cfg)
+              mKey <- lookupEnv (apiKeyEnv (cfg ^. provider))
+              let cfg' = maybe cfg (\k -> cfg & apiKey .~ Text.pack k) mKey
+              pure (Right cfg')
+            Left _    -> pure $ Left (Text.pack (show err))
+
+providerCodec :: TomlCodec Provider
+providerCodec = Toml.textBy renderProvider parseProvider "provider"
+
+parseProvider :: Text -> Either Text Provider
+parseProvider text = case Text.toLower text of
+  "zhipuai" -> Right ZhipuAI
+  "openai"  -> Right OpenAI
+  _         -> Left "unknown provider, expected zhipuai or openai"
+
+renderProvider :: Provider -> Text
+renderProvider ZhipuAI = "zhipuai"
+renderProvider OpenAI  = "openai"
+
+apiKeyEnv :: Provider -> String
+apiKeyEnv ZhipuAI = "ZHIPUAI_API_KEY"
+apiKeyEnv OpenAI  = "OPENAI_API_KEY"

@@ -35,7 +35,11 @@ library
       FileSystem.Local
       LLM.Http
       Snapshot.Git
+      Tool.Execution
+      Tool.Registry
+      Tool.Schema
       Types.Chat
+      Types.ToolCall
   other-modules:
       Paths_Telos
   autogen-modules:

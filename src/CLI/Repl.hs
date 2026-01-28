@@ -20,12 +20,16 @@ import           Config                   ( Config )
 
 import           Control.Lens             ( (?~), (^.), non )
 
+import           Data.Aeson               ( (.:), Value, eitherDecodeStrict', encode, withObject )
+import           Data.Aeson.Types         ( Parser, parseEither )
+import qualified Data.ByteString.Lazy     as LBS
 import           Data.Char                ( isAlphaNum )
 import qualified Data.Map.Strict          as Map
 import qualified Data.Text                as Text
+import qualified Data.Text.Encoding       as Text
 
 import           Effects.FileSystem       ( FileSystem )
-import           Effects.LLM              ( askLLM )
+import           Effects.LLM              ( LLMResponse, askLLM, responseText, responseToolCalls )
 import           Effects.Snapshot         ( SnapshotCommit
                                           , loadSnapshot
                                           , mkSnapshotCommit
@@ -34,14 +38,26 @@ import           Effects.Snapshot         ( SnapshotCommit
 
 import           FileSystem.Local         ( runFileSystemLocal )
 
-import           LLM.Http                 ( Role(..), runLLMHttp, runLLMHttpSilent )
+import           LLM.Http                 ( Role(..)
+                                          , runLLMHttpSilentWithTools
+                                          , runLLMHttpWithTools
+                                          , supportsToolCalls
+                                          )
 
 import           Polysemy                 ( Embed, Members, Sem, embed, runM )
 import           Polysemy.Embed           ( runEmbedded )
 import           Polysemy.Input           ( Input, runInputConst )
 import           Polysemy.State           ( State, evalState, get, modify, put, runState )
 
-import           Relude                   hiding ( State, evalState, get, modify, put, runState )
+import           Relude                   hiding ( State
+                                                 , decodeUtf8
+                                                 , encodeUtf8
+                                                 , evalState
+                                                 , get
+                                                 , modify
+                                                 , put
+                                                 , runState
+                                                 )
 
 import           Snapshot.Git             ( ProjectEntry
                                           , createProject
@@ -71,7 +87,27 @@ import           System.Directory         ( XdgDirectory(XdgCache)
                                           )
 import           System.FilePath          ( (</>) )
 
-import           Types.Chat               ( Message, content, mkMessage, role )
+import           Tool.Execution           ( executeToolCall )
+import           Tool.Registry            ( toolInventoryMessage
+                                          , toolResultContent
+                                          , toolResultId
+                                          , toolSpecs
+                                          )
+import           Tool.Schema              ( ToolSpec )
+
+import           Types.Chat               ( Message
+                                          , content
+                                          , mkMessage
+                                          , mkToolCallMessage
+                                          , mkToolResultMessage
+                                          , role
+                                          )
+import           Types.ToolCall           ( ToolCall
+                                          , functionArguments
+                                          , functionName
+                                          , mkToolCall
+                                          , toolFunction
+                                          )
 
 type InputIO = InputT IO
 
@@ -124,17 +160,24 @@ loop cfg scopeRoot = embed @InputIO (getInputLine "% ") >>= \case
             ( updatedHistory, _ ) <- runSnapshotGit scopeRoot (currentProject ^. projectName) $ do
               initial <- loadSnapshot current
               let startingHistory   = initial ^. non []
-                  historyForRequest
+                  toolsAvailable
+                    = if supportsToolCalls cfg
+                      then Just toolSpecs
+                      else Nothing
+                  withContext
                     = maybe startingHistory (\ctx -> startingHistory <> [ ctx ]) contextMsg
-              ( updatedHistory, reply ) <- runState historyForRequest $ do
+                  historyForRequest
+                    = if supportsToolCalls cfg
+                      then withContext
+                      else withContext <> [ toolInventoryMessage ]
+              ( updatedHistory, _ ) <- runState historyForRequest $ do
                 let userMsg = mkMessage User message
                 modify (userMsg :)
-                reply <- runLLMHttp $ askLLM userMsg
-                modify (mkMessage Assistant reply :)
-                pure reply
-              let savedHistory = stripContext updatedHistory
+                response <- runLLMHttpWithTools toolsAvailable $ askLLM userMsg
+                handleResponse scopeRoot toolsAvailable response
+              let savedHistory = stripTransient updatedHistory
               saveSnapshot savedHistory
-              pure ( savedHistory, reply )
+              pure ( savedHistory, () )
             maybeGenerateTitle scopeRoot updatedHistory
             pure ()
       else do
@@ -240,6 +283,31 @@ handleCommand scopeRoot command = case command of
     embed @IO $ putStrLn (Text.unpack (renderHelp mCommand))
     pure True
 
+handleResponse
+  :: Members
+    '[ State SnapshotCommit
+     , State ProjectEntry
+     , State [ Message ]
+     , FileSystem
+     , Input Config
+     , Embed IO
+     ]
+    r
+  => FilePath
+  -> Maybe [ ToolSpec ]
+  -> LLMResponse
+  -> Sem r ()
+handleResponse scopeRoot toolsAvailable response = do
+  let toolCalls = response ^. responseToolCalls
+      textReply = response ^. responseText
+  if null toolCalls
+    then case toolsAvailable of
+      Nothing -> case parseTextToolCall textReply of
+        Nothing   -> unless (Text.null textReply) $ modify (mkMessage Assistant textReply :)
+        Just call -> runToolLoop scopeRoot toolsAvailable 0 [ call ]
+      Just _  -> unless (Text.null textReply) $ modify (mkMessage Assistant textReply :)
+    else runToolLoop scopeRoot toolsAvailable 0 toolCalls
+
 renderProject :: Text -> Text -> ProjectEntry -> String
 renderProject scopeText groupPath entry
   = let
@@ -260,6 +328,7 @@ renderMessage msg
         System    -> "System"
         User      -> "User"
         Assistant -> "Assistant"
+        Tool      -> "Tool"
     in 
       label <> ": " <> Text.unpack (msg ^. content)
 
@@ -376,8 +445,10 @@ generateTitle :: Members '[ Embed IO, Input Config ] r => [ Message ] -> Sem r T
 generateTitle history = do
   let recent = reverse (take 6 history)
       prompt = titlePrompt recent
-  ( _, title ) <- runState @[ Message ] [] $ runLLMHttpSilent $ askLLM (mkMessage User prompt)
-  pure title
+  ( _, response ) <- runState @[ Message ] []
+    $ runLLMHttpSilentWithTools Nothing
+    $ askLLM (mkMessage User prompt)
+  pure (response ^. responseText)
 
 titlePrompt :: [ Message ] -> Text
 titlePrompt history
@@ -399,6 +470,7 @@ formatMessage msg
         System    -> "System"
         User      -> "User"
         Assistant -> "Assistant"
+        Tool      -> "Tool"
     in 
       label <> ": " <> Text.take 200 (msg ^. content)
 
@@ -428,8 +500,91 @@ makeUniqueName desired existing
             then go (n + 1)
             else candidate
 
-stripContext :: [ Message ] -> [ Message ]
-stripContext = filter (not . isContextMessage)
+stripTransient :: [ Message ] -> [ Message ]
+stripTransient = filter (not . isTransientMessage)
+
+isTransientMessage :: Message -> Bool
+isTransientMessage msg = isContextMessage msg || isToolInventoryMessage msg
 
 isContextMessage :: Message -> Bool
 isContextMessage msg = msg ^. role == System && Text.isPrefixOf "<filesystem>" (msg ^. content)
+
+isToolInventoryMessage :: Message -> Bool
+isToolInventoryMessage msg
+  = msg ^. role == System && Text.isPrefixOf "You can call tools using <toolcall>" (msg ^. content)
+
+runToolLoop
+  :: Members
+    '[ State SnapshotCommit
+     , State ProjectEntry
+     , State [ Message ]
+     , FileSystem
+     , Input Config
+     , Embed IO
+     ]
+    r
+  => FilePath
+  -> Maybe [ ToolSpec ]
+  -> Int
+  -> [ ToolCall ]
+  -> Sem r ()
+runToolLoop scopeRoot toolsAvailable depth calls
+  | depth >= 3 = pure ()
+  | otherwise = do
+    unless (null calls) $ do
+      logToolCalls calls
+      modify (mkToolCallMessage calls :)
+      results <- traverse (executeToolCall scopeRoot) calls
+      for_ results $ \result -> modify
+        (mkToolResultMessage (result ^. toolResultId) (result ^. toolResultContent) :)
+      followup <- runLLMHttpWithTools toolsAvailable $ askLLM (mkMessage User "")
+      let nextCalls = followup ^. responseToolCalls
+          replyText = followup ^. responseText
+      if null nextCalls
+        then unless (Text.null replyText) $ modify (mkMessage Assistant replyText :)
+        else runToolLoop scopeRoot toolsAvailable (depth + 1) nextCalls
+
+logToolCalls :: Members '[ Embed IO ] r => [ ToolCall ] -> Sem r ()
+logToolCalls calls = embed @IO $ mapM_ (putStrLn . Text.unpack . renderToolCall) calls
+
+renderToolCall :: ToolCall -> Text
+renderToolCall call
+  = let
+      name = call ^. toolFunction . functionName
+      args = call ^. toolFunction . functionArguments
+    in 
+      "Tool call: " <> name <> " args=" <> Text.take 200 args
+
+parseTextToolCall :: Text -> Maybe ToolCall
+parseTextToolCall text = do
+  jsonText <- extractToolCallBlock text
+  ToolCallRequest name args <- decodeToolCall jsonText
+  let argsText = Text.decodeUtf8 (LBS.toStrict (encode args))
+  pure (mkToolCall "text-call-1" name argsText)
+
+extractToolCallBlock :: Text -> Maybe Text
+extractToolCallBlock text = do
+  let startTag    = "<toolcall>"
+      endTag      = "</toolcall>"
+      ( _, rest ) = Text.breakOn startTag text
+  if Text.null rest
+    then Nothing
+    else do
+      let afterStart         = Text.drop (Text.length startTag) rest
+          ( body, tailText ) = Text.breakOn endTag afterStart
+      if Text.null tailText
+        then Nothing
+        else Just (Text.strip body)
+
+data ToolCallRequest = ToolCallRequest Text Value
+
+decodeToolCall :: Text -> Maybe ToolCallRequest
+decodeToolCall text = case eitherDecodeStrict' (Text.encodeUtf8 text) of
+  Left _      -> Nothing
+  Right value -> case parseEither parseToolCallRequest value of
+    Left _  -> Nothing
+    Right r -> Just r
+
+parseToolCallRequest :: Value -> Parser ToolCallRequest
+parseToolCallRequest
+  = withObject "ToolCall" $ \obj -> ToolCallRequest <$> obj .: "tool" <*> obj .: "args"
