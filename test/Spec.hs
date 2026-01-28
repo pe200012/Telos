@@ -1,7 +1,15 @@
 module Main ( main ) where
 
+import           CLI.Context             ( buildContextMessage
+                                         , defaultContextSpec
+                                         , maxBytes
+                                         , maxPerFile
+                                         , paths
+                                         , validatePathSpec
+                                         )
+
 import           Control.Exception       ( SomeException, bracket, try )
-import           Control.Lens            ( view )
+import           Control.Lens            ( (&), (.~), view )
 import           Control.Monad           ( void )
 
 import           Crypto.Hash             ( Digest, SHA256, hash )
@@ -13,16 +21,17 @@ import           Data.Text               ( Text )
 import qualified Data.Text               as Text
 import           Data.Text.Encoding      ( encodeUtf8 )
 
-import           Snapshot.Git
-  ( HasProjectName(..)
-  , HasProjectPath(..)
-  , ProjectEntry
-  , createProject
-  , listProjects
-  , projectName
-  , projectPath
-  , renameProject
-  )
+import           FileSystem.Local        ( runFileSystemLocal )
+
+import           Polysemy                ( runM )
+
+import           Snapshot.Git            ( ProjectEntry
+                                         , createProject
+                                         , listProjects
+                                         , projectName
+                                         , projectPath
+                                         , renameProject
+                                         )
 
 import           System.Directory        ( createDirectoryIfMissing
                                          , getTemporaryDirectory
@@ -33,13 +42,17 @@ import           System.Exit             ( exitFailure )
 import           System.FilePath         ( (</>), takeDirectory )
 import           System.IO.Temp          ( createTempDirectory )
 
+import           Types.Chat              ( content )
+
 main :: IO ()
 main = do
   ok1 <- testInvalidProjectIndexThrows
   ok2 <- testListProjectsReadsIndex
   ok3 <- testCreateProjectRejectsDuplicate
   ok4 <- testRenameProject
-  if and [ ok1, ok2, ok3, ok4 ]
+  ok5 <- testContextBuildTruncates
+  ok6 <- testValidatePathSpecOutsideScope
+  if and [ ok1, ok2, ok3, ok4, ok5, ok6 ]
     then putStrLn "All tests passed"
     else exitFailure
 
@@ -114,6 +127,35 @@ testRenameProject = withTempCache $ \_ -> do
               putStrLn "Expected rename to update project name"
               pure False
 
+testContextBuildTruncates :: IO Bool
+testContextBuildTruncates = withTempDir $ \tempDir -> do
+  let scopeRoot = tempDir
+      filePath  = tempDir </> "snippet.txt"
+  writeFile filePath "0123456789"
+  let spec = defaultContextSpec & paths .~ [ "snippet.txt" ] & maxPerFile .~ 4 & maxBytes .~ 100
+  message <- runM $ runFileSystemLocal scopeRoot $ buildContextMessage scopeRoot spec
+  case message of
+    Nothing  -> do
+      putStrLn "Expected context message to be built"
+      pure False
+    Just msg -> do
+      let body = view content msg
+      if "... [truncated]" `Text.isInfixOf` body && "# path: snippet.txt" `Text.isInfixOf` body
+        then pure True
+        else do
+          putStrLn "Expected truncated content and path marker in context"
+          pure False
+
+testValidatePathSpecOutsideScope :: IO Bool
+testValidatePathSpecOutsideScope = withTempDir $ \tempDir -> do
+  let scopeRoot = tempDir
+  result <- validatePathSpec scopeRoot "/etc/passwd"
+  case result of
+    Left _  -> pure True
+    Right _ -> do
+      putStrLn "Expected outside path to be rejected"
+      pure False
+
 indexPathFor :: FilePath -> FilePath -> FilePath
 indexPathFor cacheRoot scopeRoot
   = cacheRoot </> "telos" </> "project-index" </> Text.unpack (sha256Hex (Text.pack scopeRoot))
@@ -140,3 +182,8 @@ withTempCache action = do
       case oldCache of
         Just value -> setEnv "XDG_CACHE_HOME" value
         Nothing    -> unsetEnv "XDG_CACHE_HOME"
+
+withTempDir :: (FilePath -> IO Bool) -> IO Bool
+withTempDir action = do
+  tmpBase <- getTemporaryDirectory
+  bracket (createTempDirectory tmpBase "telos-test-") removeDirectoryRecursive action

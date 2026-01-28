@@ -4,6 +4,17 @@
 
 module CLI.Repl ( runRepl ) where
 
+import           CLI.Context              ( ContextSpec
+                                          , addContextPath
+                                          , buildContextMessage
+                                          , clearContextSpec
+                                          , defaultContextSpec
+                                          , maxBytes
+                                          , maxPerFile
+                                          , paths
+                                          , validatePathSpec
+                                          )
+
 import           Config                   ( Config )
 
 import           Control.Lens             ( (&), (?~), (^.), non )
@@ -17,12 +28,15 @@ import           Data.Maybe               ( listToMaybe )
 import           Data.Text                ( Text )
 import qualified Data.Text                as Text
 
+import           Effects.FileSystem       ( FileSystem )
 import           Effects.LLM              ( askLLM )
 import           Effects.Snapshot         ( SnapshotCommit
                                           , loadSnapshot
                                           , mkSnapshotCommit
                                           , saveSnapshot
                                           )
+
+import           FileSystem.Local         ( runFileSystemLocal )
 
 import           LLM.Http                 ( Role(..), runLLMHttp, runLLMHttpSilent )
 
@@ -72,6 +86,8 @@ runRepl cfg = do
   let settings = defaultSettings { historyFile = Just historyPath, autoAddHistory = True }
   runM
     $ runEmbedded @InputIO @IO (runInputT settings)
+    $ runFileSystemLocal scopeRoot
+    $ evalState defaultContextSpec
     $ evalState currentProject
     $ evalState (mkSnapshotCommit (lastRef ^. non "HEAD"))
     $ loop cfg scopeRoot
@@ -82,7 +98,15 @@ historyFilePath = do
   createDirectoryIfMissing True cacheRoot
   pure (cacheRoot </> "repl-history")
 
-loop :: Members '[ State SnapshotCommit, State ProjectEntry, Embed InputIO, Embed IO ] r
+loop :: Members
+       '[ State SnapshotCommit
+        , State ProjectEntry
+        , State ContextSpec
+        , FileSystem
+        , Embed InputIO
+        , Embed IO
+        ]
+       r
      => Config
      -> FilePath
      -> Sem r ()
@@ -96,18 +120,23 @@ loop cfg scopeRoot = embed @InputIO (getInputLine "% ") >>= \case
         unless (Text.null message) $ do
           current <- get @SnapshotCommit
           currentProject <- get @ProjectEntry
+          contextSpec <- get @ContextSpec
           runInputConst cfg $ do
+            contextMsg <- buildContextMessage scopeRoot contextSpec
             ( updatedHistory, _ ) <- runSnapshotGit scopeRoot (currentProject ^. projectName) $ do
               initial <- loadSnapshot current
-              let startingHistory = initial ^. non []
-              ( updatedHistory, reply ) <- runState startingHistory $ do
+              let startingHistory   = initial ^. non []
+                  historyForRequest
+                    = maybe startingHistory (\ctx -> startingHistory <> [ ctx ]) contextMsg
+              ( updatedHistory, reply ) <- runState historyForRequest $ do
                 let userMsg = mkMessage User message
                 modify (userMsg :)
                 reply <- runLLMHttp $ askLLM userMsg
                 modify (mkMessage Assistant reply :)
                 pure reply
-              saveSnapshot updatedHistory
-              pure ( updatedHistory, reply )
+              let savedHistory = stripContext updatedHistory
+              saveSnapshot savedHistory
+              pure ( savedHistory, reply )
             maybeGenerateTitle scopeRoot updatedHistory
             pure ()
       else do
@@ -115,10 +144,11 @@ loop cfg scopeRoot = embed @InputIO (getInputLine "% ") >>= \case
         unless handled $ embed @IO $ putStrLn "Unknown command. Use > to chat."
     loop cfg scopeRoot
 
-handleCommand :: Members '[ State SnapshotCommit, State ProjectEntry, Embed IO ] r
-              => FilePath
-              -> Text
-              -> Sem r Bool
+handleCommand
+  :: Members '[ State SnapshotCommit, State ProjectEntry, State ContextSpec, Embed IO ] r
+  => FilePath
+  -> Text
+  -> Sem r Bool
 handleCommand scopeRoot input
   | input == "/snapshot" = do
     project <- get @ProjectEntry
@@ -157,6 +187,37 @@ handleCommand scopeRoot input
           putStrLn (Text.unpack path)
           let sorted = sortOn (^. projectName) items
           for_ sorted $ \entry -> putStrLn (renderProject scopeText path entry)
+    pure True
+  | input == "/context show" = do
+    spec <- get @ContextSpec
+    let limitLine
+          = "limits: maxBytes="
+          <> show (spec ^. maxBytes)
+          <> " maxPerFile="
+          <> show (spec ^. maxPerFile)
+        pathLines
+          = if null (spec ^. paths)
+            then [ "(no paths)" ]
+            else spec ^. paths
+    embed @IO $ do
+      putStrLn limitLine
+      mapM_ putStrLn pathLines
+    pure True
+  | input == "/context clear" = do
+    modify @ContextSpec clearContextSpec
+    embed @IO $ putStrLn "Context cleared."
+    pure True
+  | Just rest <- Text.stripPrefix "/context add " input = do
+    let raw = Text.strip rest
+    if Text.null raw
+      then embed @IO $ putStrLn "Usage: /context add <path|glob>"
+      else do
+        result <- embed @IO $ validatePathSpec scopeRoot raw
+        case result of
+          Left err   -> embed @IO $ putStrLn (Text.unpack err)
+          Right path -> do
+            modify @ContextSpec (addContextPath path)
+            embed @IO $ putStrLn ("Context added: " <> path)
     pure True
   | Just rest <- Text.stripPrefix "/project use " input = do
     let name = Text.strip rest
@@ -381,3 +442,9 @@ makeUniqueName desired existing
           if candidate `elem` existing
             then go (n + 1)
             else candidate
+
+stripContext :: [ Message ] -> [ Message ]
+stripContext = filter (not . isContextMessage)
+
+isContextMessage :: Message -> Bool
+isContextMessage msg = msg ^. role == System && Text.isPrefixOf "<filesystem>" (msg ^. content)
