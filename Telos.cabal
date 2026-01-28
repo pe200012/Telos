@@ -182,6 +182,7 @@ test-suite Telos-test
     , directory
     , filepath
     , haskeline
+    , hspec
     , http-client
     , http-conduit
     , lens

@@ -8,7 +8,7 @@ import           CLI.Context             ( buildContextMessage
                                          , validatePathSpec
                                          )
 
-import           Control.Exception       ( SomeException, bracket, try )
+import           Control.Exception       ( bracket )
 import           Control.Lens            ( (.~), view )
 
 import           Crypto.Hash             ( Digest, SHA256, hash )
@@ -41,259 +41,167 @@ import           System.Environment      ( lookupEnv, setEnv, unsetEnv )
 import           System.FilePath         ( (</>), takeDirectory )
 import           System.IO.Temp          ( createTempDirectory )
 
+import           Test.Hspec              ( Spec
+                                         , anyException
+                                         , describe
+                                         , hspec
+                                         , it
+                                         , shouldBe
+                                         , shouldContain
+                                         , shouldNotContain
+                                         , shouldSatisfy
+                                         , shouldThrow
+                                         )
+
 import           Types.Chat              ( content )
 
 main :: IO ()
-main = do
-  ok1 <- testInvalidProjectIndexThrows
-  ok2 <- testListProjectsReadsIndex
-  ok3 <- testCreateProjectRejectsDuplicate
-  ok4 <- testRenameProject
-  ok5 <- testContextBuildTruncates
-  ok6 <- testValidatePathSpecOutsideScope
-  ok7 <- testRenderHeading
-  ok8 <- testRenderList
-  ok9 <- testRenderQuote
-  ok10 <- testRenderCodeBlock
-  ok11 <- testRenderInline
-  ok12 <- testRenderBoldUnderscore
-  ok13 <- testRenderNestedInline
-  ok14 <- testRenderEscapedInline
-  ok15 <- testStreamIncremental
-  ok16 <- testStreamFinalize
-  if and [ ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15, ok16 ]
-    then putStrLn "All tests passed"
-    else exitFailure
+main = hspec spec
 
-testInvalidProjectIndexThrows :: IO Bool
-testInvalidProjectIndexThrows = withTempCache $ \tempDir -> do
-  let scopeRoot = "/tmp/telos-project"
-      path      = indexPathFor tempDir scopeRoot
-  createDirectoryIfMissing True (takeDirectory path)
-  writeFile path "{ invalid json"
-  result <- try (void (listProjects scopeRoot)) :: IO (Either SomeException ())
-  case result of
-    Left _  -> pure True
-    Right _ -> do
-      putStrLn "Expected invalid project-index.json to raise an exception"
-      pure False
+spec :: Spec
+spec = do
+  describe "Snapshot.Git" $ do
+    describe "listProjects" $ do
+      it "throws on invalid project-index.json" $ withTempCache $ \tempDir -> do
+        let scopeRoot = "/tmp/telos-project"
+            path      = indexPathFor tempDir scopeRoot
+        createDirectoryIfMissing True (takeDirectory path)
+        writeFile path "{ invalid json"
+        listProjects scopeRoot `shouldThrow` anyException
 
-testListProjectsReadsIndex :: IO Bool
-testListProjectsReadsIndex = withTempCache $ \tempDir -> do
-  let scopeRoot = "/tmp/telos-project"
-      path      = indexPathFor tempDir scopeRoot
-  createDirectoryIfMissing True (takeDirectory path)
-  writeFile path indexJson
-  entries <- listProjects scopeRoot
-  let names = sortOn id (map (view projectName) entries)
-  if names == sortOn id expectedNames
-    then pure True
-    else do
-      putStrLn ("Expected names " <> show expectedNames <> ", got " <> show names)
-      pure False
-  where
-    expectedNames = map Text.pack [ "demo", "work" ]
+      it "reads project-index.json correctly" $ withTempCache $ \tempDir -> do
+        let scopeRoot     = "/tmp/telos-project"
+            path          = indexPathFor tempDir scopeRoot
+            expectedNames = map Text.pack [ "demo", "work" ]
+            indexJson
+              = "{\n"
+              <> "  \"projects\": {\n"
+              <> "    \"demo\": { \"uuid\": \"id-a\", \"path\": \"/tmp/proj-a\", \"lastSession\": \"hash-a\" },\n"
+              <> "    \"work\": { \"uuid\": \"id-b\", \"path\": \"/tmp/proj-b\", \"lastSession\": null }\n"
+              <> "  }\n"
+              <> "}\n"
+        createDirectoryIfMissing True (takeDirectory path)
+        writeFile path indexJson
+        entries <- listProjects scopeRoot
+        let names = sortOn id (map (view projectName) entries)
+        names `shouldBe` sortOn id expectedNames
 
-    indexJson
-      = "{\n"
-      <> "  \"projects\": {\n"
-      <> "    \"demo\": { \"uuid\": \"id-a\", \"path\": \"/tmp/proj-a\", \"lastSession\": \"hash-a\" },\n"
-      <> "    \"work\": { \"uuid\": \"id-b\", \"path\": \"/tmp/proj-b\", \"lastSession\": null }\n"
-      <> "  }\n"
-      <> "}\n"
+    describe "createProject" $ do
+      it "rejects duplicate project names" $ withTempCache $ \_ -> do
+        let scopeRoot = "/tmp/telos-project"
+        firstResult <- createProject scopeRoot "demo" "/tmp/proj"
+        secondResult <- createProject scopeRoot "demo" "/tmp/proj"
+        firstResult `shouldSatisfy` isRight
+        secondResult `shouldSatisfy` isLeft
 
-testCreateProjectRejectsDuplicate :: IO Bool
-testCreateProjectRejectsDuplicate = withTempCache $ \_ -> do
-  let scopeRoot = "/tmp/telos-project"
-  firstResult <- createProject scopeRoot "demo" "/tmp/proj"
-  secondResult <- createProject scopeRoot "demo" "/tmp/proj"
-  case ( firstResult, secondResult ) of
-    ( Right _, Left _ ) -> pure True
-    _ -> do
-      putStrLn "Expected duplicate project name to be rejected"
-      pure False
+    describe "renameProject" $ do
+      it "updates project name correctly" $ withTempCache $ \_ -> do
+        let scopeRoot = "/tmp/telos-project"
+        created <- createProject scopeRoot "untitled-1" "/tmp/proj"
+        created `shouldSatisfy` isRight
+        renamed <- renameProject scopeRoot "untitled-1" "demo"
+        renamed `shouldSatisfy` isRight
+        entries <- listProjects scopeRoot
+        let names = map (view projectName) entries
+        names `shouldContain` [ Text.pack "demo" ]
+        names `shouldNotContain` [ Text.pack "untitled-1" ]
 
-testRenameProject :: IO Bool
-testRenameProject = withTempCache $ \_ -> do
-  let scopeRoot = "/tmp/telos-project"
-  created <- createProject scopeRoot "untitled-1" "/tmp/proj"
-  case created of
-    Left err -> do
-      putStrLn ("Unexpected create failure: " <> Text.unpack err)
-      pure False
-    Right _  -> do
-      renamed <- renameProject scopeRoot "untitled-1" "demo"
-      case renamed of
-        Left err -> do
-          putStrLn ("Unexpected rename failure: " <> Text.unpack err)
-          pure False
-        Right _  -> do
-          entries <- listProjects scopeRoot
-          let names = map (view projectName) entries
-          if Text.pack "demo" `elem` names && Text.pack "untitled-1" `notElem` names
-            then pure True
-            else do
-              putStrLn "Expected rename to update project name"
-              pure False
+  describe "CLI.Context" $ do
+    describe "buildContextMessage" $ do
+      it "truncates content when exceeding maxPerFile" $ withTempDir $ \tempDir -> do
+        let scopeRoot = tempDir
+            filePath  = tempDir </> "snippet.txt"
+        writeFile filePath "0123456789"
+        let ctxSpec
+              = defaultContextSpec & paths .~ [ "snippet.txt" ] & maxPerFile .~ 4 & maxBytes .~ 100
+        message <- runM $ runFileSystemLocal scopeRoot $ buildContextMessage scopeRoot ctxSpec
+        case message of
+          Nothing  -> fail "Expected context message to be built"
+          Just msg -> do
+            let body = view content msg
+            body `shouldSatisfy` Text.isInfixOf "... [truncated]"
+            body `shouldSatisfy` Text.isInfixOf "# path: snippet.txt"
 
-testContextBuildTruncates :: IO Bool
-testContextBuildTruncates = withTempDir $ \tempDir -> do
-  let scopeRoot = tempDir
-      filePath  = tempDir </> "snippet.txt"
-  writeFile filePath "0123456789"
-  let spec = defaultContextSpec & paths .~ [ "snippet.txt" ] & maxPerFile .~ 4 & maxBytes .~ 100
-  message <- runM $ runFileSystemLocal scopeRoot $ buildContextMessage scopeRoot spec
-  case message of
-    Nothing  -> do
-      putStrLn "Expected context message to be built"
-      pure False
-    Just msg -> do
-      let body = view content msg
-      if "... [truncated]" `Text.isInfixOf` body && "# path: snippet.txt" `Text.isInfixOf` body
-        then pure True
-        else do
-          putStrLn "Expected truncated content and path marker in context"
-          pure False
+    describe "validatePathSpec" $ do
+      it "rejects paths outside scope" $ withTempDir $ \tempDir -> do
+        let scopeRoot = tempDir
+        result <- validatePathSpec scopeRoot "/etc/passwd"
+        result `shouldSatisfy` isLeft
 
-testValidatePathSpecOutsideScope :: IO Bool
-testValidatePathSpecOutsideScope = withTempDir $ \tempDir -> do
-  let scopeRoot = tempDir
-  result <- validatePathSpec scopeRoot "/etc/passwd"
-  case result of
-    Left _  -> pure True
-    Right _ -> do
-      putStrLn "Expected outside path to be rejected"
-      pure False
+  describe "Markdown.RenderAnsi" $ do
+    describe "renderMarkdown" $ do
+      it "renders headings with ANSI codes" $ do
+        let linesOut = renderMarkdown "# Title\n"
+        case linesOut of
+          []       -> fail "Expected heading line"
+          line : _ -> do
+            stripAnsi line `shouldBe` "Title"
+            line `shouldSatisfy` Text.isInfixOf "\ESC["
 
-testRenderHeading :: IO Bool
-testRenderHeading = do
-  let linesOut = renderMarkdown "# Title\n"
-  case linesOut of
-    []       -> do
-      putStrLn "Expected heading line"
-      pure False
-    line : _ -> do
-      let stripped = stripAnsi line
-      if stripped == "Title" && Text.isInfixOf "\ESC[" line
-        then pure True
-        else do
-          putStrLn ("Unexpected heading render: " <> Text.unpack stripped)
-          pure False
+      it "renders list items" $ do
+        let linesOut = renderMarkdown "- item\n"
+        case linesOut of
+          []       -> fail "Expected list line"
+          line : _ -> stripAnsi line `shouldBe` "- item"
 
-testRenderList :: IO Bool
-testRenderList = do
-  let linesOut = renderMarkdown "- item\n"
-  case linesOut of
-    []       -> do
-      putStrLn "Expected list line"
-      pure False
-    line : _ -> if stripAnsi line == "- item"
-      then pure True
-      else do
-        putStrLn "Unexpected list render"
-        pure False
+      it "renders blockquotes" $ do
+        let linesOut = renderMarkdown "> q\n"
+        case linesOut of
+          []       -> fail "Expected quote line"
+          line : _ -> stripAnsi line `shouldBe` "| q"
 
-testRenderQuote :: IO Bool
-testRenderQuote = do
-  let linesOut = renderMarkdown "> q\n"
-  case linesOut of
-    []       -> do
-      putStrLn "Expected quote line"
-      pure False
-    line : _ -> if stripAnsi line == "| q"
-      then pure True
-      else do
-        putStrLn "Unexpected quote render"
-        pure False
+      it "renders code blocks preserving whitespace" $ do
+        let linesOut = renderMarkdown "```\n  x\n```\n"
+        linesOut `shouldSatisfy` any ((== "  x") . stripAnsi)
 
-testRenderCodeBlock :: IO Bool
-testRenderCodeBlock = do
-  let linesOut = renderMarkdown "```\n  x\n```\n"
-  if any ((== "  x") . stripAnsi) linesOut
-    then pure True
-    else do
-      putStrLn "Expected code line to preserve whitespace"
-      pure False
+      it "renders inline formatting" $ do
+        let linesOut = renderMarkdown "*b* _i_ `c`\n"
+        case linesOut of
+          []       -> fail "Expected inline line"
+          line : _ -> stripAnsi line `shouldBe` "b i c"
 
-testRenderInline :: IO Bool
-testRenderInline = do
-  let linesOut = renderMarkdown "*b* _i_ `c`\n"
-  case linesOut of
-    []       -> do
-      putStrLn "Expected inline line"
-      pure False
-    line : _ -> if stripAnsi line == "b i c"
-      then pure True
-      else do
-        putStrLn "Unexpected inline render"
-        pure False
+      it "renders bold with underscores" $ do
+        let linesOut = renderMarkdown "__bold__\n"
+        case linesOut of
+          []       -> fail "Expected bold line"
+          line : _ -> do
+            stripAnsi line `shouldBe` "bold"
+            line `shouldSatisfy` Text.isInfixOf "\ESC["
 
-testRenderBoldUnderscore :: IO Bool
-testRenderBoldUnderscore = do
-  let linesOut = renderMarkdown "__bold__\n"
-  case linesOut of
-    []       -> do
-      putStrLn "Expected bold line"
-      pure False
-    line : _ -> if stripAnsi line == "bold" && Text.isInfixOf "\ESC[" line
-      then pure True
-      else do
-        putStrLn "Unexpected bold underscore render"
-        pure False
+      it "renders nested inline formatting" $ do
+        let linesOut = renderMarkdown "**bold _italic_**\n"
+        case linesOut of
+          []       -> fail "Expected nested inline line"
+          line : _ -> stripAnsi line `shouldBe` "bold italic"
 
-testRenderNestedInline :: IO Bool
-testRenderNestedInline = do
-  let linesOut = renderMarkdown "**bold _italic_**\n"
-  case linesOut of
-    []       -> do
-      putStrLn "Expected nested inline line"
-      pure False
-    line : _ -> if stripAnsi line == "bold italic"
-      then pure True
-      else do
-        putStrLn "Unexpected nested inline render"
-        pure False
+      it "renders escaped inline markers" $ do
+        let linesOut = renderMarkdown "\\*not italic\\* and \\_not\\_\n"
+        case linesOut of
+          []       -> fail "Expected escaped inline line"
+          line : _ -> do
+            stripAnsi line `shouldBe` "*not italic* and _not_"
+            line `shouldSatisfy` (not . Text.isInfixOf "\ESC[")
 
-testRenderEscapedInline :: IO Bool
-testRenderEscapedInline = do
-  let linesOut = renderMarkdown "\\*not italic\\* and \\_not\\_\n"
-  case linesOut of
-    []       -> do
-      putStrLn "Expected escaped inline line"
-      pure False
-    line : _ -> if stripAnsi line == "*not italic* and _not_" && not (Text.isInfixOf "\ESC[" line)
-      then pure True
-      else do
-        putStrLn "Unexpected escaped inline render"
-        pure False
+  describe "Markdown.Stream" $ do
+    describe "pushDelta" $ do
+      it "does not output before newline" $ do
+        let st0           = newStreamState
+            ( st1, out1 ) = pushDelta st0 "Hello"
+            ( _, out2 )   = pushDelta st1 "\nWorld"
+        out1 `shouldBe` []
+        map stripAnsi out2 `shouldBe` [ "Hello" ]
 
-testStreamIncremental :: IO Bool
-testStreamIncremental = do
-  let st0           = newStreamState
-      ( st1, out1 ) = pushDelta st0 "Hello"
-      ( _, out2 )   = pushDelta st1 "\nWorld"
-  if not (null out1)
-    then do
-      putStrLn "Expected no output before newline"
-      pure False
-    else if map stripAnsi out2 == [ "Hello" ]
-      then pure True
-      else do
-        putStrLn "Unexpected incremental output"
-        pure False
+    describe "finalizeStream" $ do
+      it "flushes remaining line" $ do
+        let st0           = newStreamState
+            ( st1, out1 ) = pushDelta st0 "Hello\nWorld"
+            ( _, out2 )   = finalizeStream st1
+            hasHello      = "Hello" `elem` map stripAnsi out1
+            hasWorld      = "World" `elem` map stripAnsi out2
+        hasHello `shouldBe` True
+        hasWorld `shouldBe` True
 
-testStreamFinalize :: IO Bool
-testStreamFinalize = do
-  let st0           = newStreamState
-      ( st1, out1 ) = pushDelta st0 "Hello\nWorld"
-      ( _, out2 )   = finalizeStream st1
-      hasHello      = "Hello" `elem` map stripAnsi out1
-      hasWorld      = "World" `elem` map stripAnsi out2
-  if hasHello && hasWorld
-    then pure True
-    else do
-      putStrLn "Expected finalize to flush remaining line"
-      pure False
+-- Helper functions
 
 indexPathFor :: FilePath -> FilePath -> FilePath
 indexPathFor cacheRoot scopeRoot
@@ -308,7 +216,7 @@ sha256Hex payload
     in 
       Text.pack (BS8.unpack hexBytes)
 
-withTempCache :: (FilePath -> IO Bool) -> IO Bool
+withTempCache :: (FilePath -> IO ()) -> IO ()
 withTempCache action = do
   oldCache <- lookupEnv "XDG_CACHE_HOME"
   tmpBase <- getTemporaryDirectory
@@ -322,7 +230,7 @@ withTempCache action = do
         Just value -> setEnv "XDG_CACHE_HOME" value
         Nothing    -> unsetEnv "XDG_CACHE_HOME"
 
-withTempDir :: (FilePath -> IO Bool) -> IO Bool
+withTempDir :: (FilePath -> IO ()) -> IO ()
 withTempDir action = do
   tmpBase <- getTemporaryDirectory
   bracket (createTempDirectory tmpBase "telos-test-") removeDirectoryRecursive action
