@@ -28,6 +28,7 @@ import           Config                   ( Config
                                           , Provider(..)
                                           )
 
+import           Control.Exception        ( SomeException, try )
 import           Control.Lens             ( (.~), (^.), (^?), view )
 import           Control.Lens.TH          ( makeFieldsNoPrefix )
 
@@ -45,7 +46,7 @@ import           Data.Aeson               ( Options
 import           Data.Aeson.Lens          ( _String, key, nth )
 import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Char8    as BS8
-import           Data.Conduit             ( (.|), runConduitRes )
+import           Data.Conduit             ( (.|), ConduitT, await, runConduitRes )
 import qualified Data.Conduit.Combinators as C
 import qualified Data.Conduit.List        as CL
 import qualified Data.Map.Strict          as Map
@@ -57,6 +58,12 @@ import           Effects.LLM              ( LLM(AskLLM)
                                           , defaultLLMResponse
                                           , responseText
                                           , responseToolCalls
+                                          )
+
+import           Markdown.Stream          ( StreamState
+                                          , finalizeStream
+                                          , newStreamState
+                                          , pushDelta
                                           )
 
 import qualified Network.HTTP.Client      as HTTP
@@ -182,30 +189,32 @@ runLLMHttpSilentWithTools toolSpecs = interpret $ \case
 
 streamResponse :: HTTP.Request -> IO LLMResponse
 streamResponse req = do
-  chunks <- runConduitRes
+  result <- try
+    $ runConduitRes
     $ httpSource req getResponseBody
     .| C.linesUnboundedAscii
     .| C.filter (BS8.isPrefixOf "data: ")
     .| C.map (BS8.drop 6)
     .| C.takeWhile (/= "[DONE]")
     .| CL.mapMaybe decodeChunk
-    .| C.mapM (\chunk -> liftIO $ do
-                 for_ (chunkText chunk) TIO.putStr
-                 when (isChunkText chunk) (hFlush stdout)
-                 pure chunk)
-    .| C.sinkList
-  let reply = foldChunks chunks
-  if Text.null (reply ^. responseText) && null (reply ^. responseToolCalls)
-    then do
-      TIO.putStrLn "[no content in response]"
-      pure reply
-    else do
-      unless (Text.null (reply ^. responseText)) (TIO.putStrLn "")
-      pure reply
+    .| consumeChunks newStreamState
+  case result of
+    Left (err :: SomeException) -> do
+      let message = "[http error: " <> Text.pack (displayException err) <> "]"
+      TIO.putStrLn message
+      pure (defaultLLMResponse & responseText .~ message)
+    Right chunks -> do
+      let reply = foldChunks chunks
+      if Text.null (reply ^. responseText) && null (reply ^. responseToolCalls)
+        then do
+          TIO.putStrLn "[no content in response]"
+          pure reply
+        else pure reply
 
 streamResponseSilent :: HTTP.Request -> IO LLMResponse
 streamResponseSilent req = do
-  chunks <- runConduitRes
+  result <- try
+    $ runConduitRes
     $ httpSource req getResponseBody
     .| C.linesUnboundedAscii
     .| C.filter (BS8.isPrefixOf "data: ")
@@ -213,7 +222,11 @@ streamResponseSilent req = do
     .| C.takeWhile (/= "[DONE]")
     .| CL.mapMaybe decodeChunk
     .| C.sinkList
-  pure (foldChunks chunks)
+  case result of
+    Left (err :: SomeException) -> do
+      let message = "[http error: " <> Text.pack (displayException err) <> "]"
+      pure (defaultLLMResponse & responseText .~ message)
+    Right chunks -> pure (foldChunks chunks)
 
 data Chunk = Chunk { chunkText :: Maybe Text, chunkToolCalls :: [ ToolCall ] }
   deriving ( Eq, Show )
@@ -229,9 +242,6 @@ decodeChunk bs = do
           ]
       toolCalls = extractToolCalls value
   pure Chunk { chunkText = textPart, chunkToolCalls = toolCalls }
-
-isChunkText :: Chunk -> Bool
-isChunkText chunk = isJust (chunkText chunk)
 
 eitherToMaybe :: Either e a -> Maybe a
 eitherToMaybe = either (const Nothing) Just
@@ -281,3 +291,22 @@ toolChoiceValue :: Config -> Maybe [ ToolSpec ] -> Maybe Text
 toolChoiceValue cfg toolSpecs
   | supportsToolCalls cfg && maybe False (not . null) toolSpecs = Just "auto"
   | otherwise = Nothing
+
+consumeChunks :: MonadIO m => StreamState -> ConduitT Chunk o m [ Chunk ]
+consumeChunks state0 = go state0 []
+  where
+    go streamState acc = await >>= \case
+      Nothing    -> do
+        let ( _, finalLines ) = finalizeStream streamState
+        liftIO $ unless (null finalLines) (mapM_ TIO.putStrLn finalLines)
+        pure (reverse acc)
+      Just chunk -> do
+        nextState <- case chunkText chunk of
+          Nothing        -> pure streamState
+          Just textChunk -> do
+            let ( nextState, newLines ) = pushDelta streamState textChunk
+            liftIO $ do
+              mapM_ TIO.putStrLn newLines
+              unless (null newLines) (hFlush stdout)
+            pure nextState
+        go nextState (chunk : acc)

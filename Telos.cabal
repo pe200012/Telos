@@ -34,6 +34,8 @@ library
       Effects.Snapshot
       FileSystem.Local
       LLM.Http
+      Markdown.RenderAnsi
+      Markdown.Stream
       Snapshot.Git
       Tool.Execution
       Tool.Registry
@@ -64,6 +66,8 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       aeson
+    , ansi-terminal
+    , attoparsec
     , base >=4.7 && <5
     , bytestring
     , conduit
@@ -114,6 +118,8 @@ executable Telos-exe
   build-depends:
       Telos
     , aeson
+    , ansi-terminal
+    , attoparsec
     , base >=4.7 && <5
     , bytestring
     , conduit
@@ -165,6 +171,8 @@ test-suite Telos-test
   build-depends:
       Telos
     , aeson
+    , ansi-terminal
+    , attoparsec
     , base >=4.7 && <5
     , bytestring
     , conduit

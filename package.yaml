@@ -24,6 +24,8 @@ language: GHC2021
 dependencies:
   - base >= 4.7 && < 5
   - aeson
+  - ansi-terminal
+  - attoparsec
   - bytestring
   - conduit
   - conduit-extra

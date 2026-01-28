@@ -8,7 +8,7 @@ import           CLI.Context             ( buildContextMessage
                                          , validatePathSpec
                                          )
 
-import           Control.Exception       ( bracket, try )
+import           Control.Exception       ( SomeException, bracket, try )
 import           Control.Lens            ( (.~), view )
 
 import           Crypto.Hash             ( Digest, SHA256, hash )
@@ -19,6 +19,9 @@ import qualified Data.Text               as Text
 import           Data.Text.Encoding      ( encodeUtf8 )
 
 import           FileSystem.Local        ( runFileSystemLocal )
+
+import           Markdown.RenderAnsi     ( renderMarkdown )
+import           Markdown.Stream         ( finalizeStream, newStreamState, pushDelta )
 
 import           Polysemy                ( runM )
 
@@ -48,7 +51,17 @@ main = do
   ok4 <- testRenameProject
   ok5 <- testContextBuildTruncates
   ok6 <- testValidatePathSpecOutsideScope
-  if and [ ok1, ok2, ok3, ok4, ok5, ok6 ]
+  ok7 <- testRenderHeading
+  ok8 <- testRenderList
+  ok9 <- testRenderQuote
+  ok10 <- testRenderCodeBlock
+  ok11 <- testRenderInline
+  ok12 <- testRenderBoldUnderscore
+  ok13 <- testRenderNestedInline
+  ok14 <- testRenderEscapedInline
+  ok15 <- testStreamIncremental
+  ok16 <- testStreamFinalize
+  if and [ ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15, ok16 ]
     then putStrLn "All tests passed"
     else exitFailure
 
@@ -152,6 +165,136 @@ testValidatePathSpecOutsideScope = withTempDir $ \tempDir -> do
       putStrLn "Expected outside path to be rejected"
       pure False
 
+testRenderHeading :: IO Bool
+testRenderHeading = do
+  let linesOut = renderMarkdown "# Title\n"
+  case linesOut of
+    []       -> do
+      putStrLn "Expected heading line"
+      pure False
+    line : _ -> do
+      let stripped = stripAnsi line
+      if stripped == "Title" && Text.isInfixOf "\ESC[" line
+        then pure True
+        else do
+          putStrLn ("Unexpected heading render: " <> Text.unpack stripped)
+          pure False
+
+testRenderList :: IO Bool
+testRenderList = do
+  let linesOut = renderMarkdown "- item\n"
+  case linesOut of
+    []       -> do
+      putStrLn "Expected list line"
+      pure False
+    line : _ -> if stripAnsi line == "- item"
+      then pure True
+      else do
+        putStrLn "Unexpected list render"
+        pure False
+
+testRenderQuote :: IO Bool
+testRenderQuote = do
+  let linesOut = renderMarkdown "> q\n"
+  case linesOut of
+    []       -> do
+      putStrLn "Expected quote line"
+      pure False
+    line : _ -> if stripAnsi line == "| q"
+      then pure True
+      else do
+        putStrLn "Unexpected quote render"
+        pure False
+
+testRenderCodeBlock :: IO Bool
+testRenderCodeBlock = do
+  let linesOut = renderMarkdown "```\n  x\n```\n"
+  if any ((== "  x") . stripAnsi) linesOut
+    then pure True
+    else do
+      putStrLn "Expected code line to preserve whitespace"
+      pure False
+
+testRenderInline :: IO Bool
+testRenderInline = do
+  let linesOut = renderMarkdown "*b* _i_ `c`\n"
+  case linesOut of
+    []       -> do
+      putStrLn "Expected inline line"
+      pure False
+    line : _ -> if stripAnsi line == "b i c"
+      then pure True
+      else do
+        putStrLn "Unexpected inline render"
+        pure False
+
+testRenderBoldUnderscore :: IO Bool
+testRenderBoldUnderscore = do
+  let linesOut = renderMarkdown "__bold__\n"
+  case linesOut of
+    []       -> do
+      putStrLn "Expected bold line"
+      pure False
+    line : _ -> if stripAnsi line == "bold" && Text.isInfixOf "\ESC[" line
+      then pure True
+      else do
+        putStrLn "Unexpected bold underscore render"
+        pure False
+
+testRenderNestedInline :: IO Bool
+testRenderNestedInline = do
+  let linesOut = renderMarkdown "**bold _italic_**\n"
+  case linesOut of
+    []       -> do
+      putStrLn "Expected nested inline line"
+      pure False
+    line : _ -> if stripAnsi line == "bold italic"
+      then pure True
+      else do
+        putStrLn "Unexpected nested inline render"
+        pure False
+
+testRenderEscapedInline :: IO Bool
+testRenderEscapedInline = do
+  let linesOut = renderMarkdown "\\*not italic\\* and \\_not\\_\n"
+  case linesOut of
+    []       -> do
+      putStrLn "Expected escaped inline line"
+      pure False
+    line : _ -> if stripAnsi line == "*not italic* and _not_" && not (Text.isInfixOf "\ESC[" line)
+      then pure True
+      else do
+        putStrLn "Unexpected escaped inline render"
+        pure False
+
+testStreamIncremental :: IO Bool
+testStreamIncremental = do
+  let st0           = newStreamState
+      ( st1, out1 ) = pushDelta st0 "Hello"
+      ( _, out2 )   = pushDelta st1 "\nWorld"
+  if not (null out1)
+    then do
+      putStrLn "Expected no output before newline"
+      pure False
+    else if map stripAnsi out2 == [ "Hello" ]
+      then pure True
+      else do
+        putStrLn "Unexpected incremental output"
+        pure False
+
+testStreamFinalize :: IO Bool
+testStreamFinalize = do
+  let st0           = newStreamState
+      ( st1, out1 ) = pushDelta st0 "Hello\nWorld"
+      ( _, out2 )   = finalizeStream st1
+      hasHello      = "Hello" `elem` map stripAnsi out1
+      hasWorld      = "World" `elem` map stripAnsi out2
+  if hasHello && hasWorld
+    then pure True
+    else do
+      putStrLn "Expected finalize to flush remaining line"
+      pure False
+
 indexPathFor :: FilePath -> FilePath -> FilePath
 indexPathFor cacheRoot scopeRoot
   = cacheRoot </> "telos" </> "project-index" </> Text.unpack (sha256Hex (Text.pack scopeRoot))
@@ -183,3 +326,13 @@ withTempDir :: (FilePath -> IO Bool) -> IO Bool
 withTempDir action = do
   tmpBase <- getTemporaryDirectory
   bracket (createTempDirectory tmpBase "telos-test-") removeDirectoryRecursive action
+
+stripAnsi :: Text -> Text
+stripAnsi = Text.pack . stripAnsiChars . Text.unpack
+
+stripAnsiChars :: [ Char ] -> [ Char ]
+stripAnsiChars [] = []
+stripAnsiChars ('\ESC' : '[' : rest) = case dropWhile (/= 'm') rest of
+  []       -> []
+  (_ : xs) -> stripAnsiChars xs
+stripAnsiChars (c : cs) = c : stripAnsiChars cs
