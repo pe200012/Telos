@@ -8,7 +8,7 @@ import           CLI.Context             ( buildContextMessage
                                          , validatePathSpec
                                          )
 
-import           Control.Exception       ( SomeException, bracket, try )
+import           Control.Exception       ( bracket, try )
 import           Control.Lens            ( (.~), view )
 
 import           Crypto.Hash             ( Digest, SHA256, hash )

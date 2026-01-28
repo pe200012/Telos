@@ -37,6 +37,7 @@ dependencies:
   - lens
   - lens-aeson
   - memory
+  - optparse-applicative
   - polysemy
   - process
   - relude

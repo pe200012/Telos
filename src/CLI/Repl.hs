@@ -4,6 +4,7 @@
 
 module CLI.Repl ( runRepl ) where
 
+import           CLI.Commands             ( Command(..), parseCommand, renderHelp )
 import           CLI.Context              ( ContextSpec
                                           , addContextPath
                                           , buildContextMessage
@@ -110,7 +111,7 @@ loop :: Members
 loop cfg scopeRoot = embed @InputIO (getInputLine "% ") >>= \case
   Nothing -> pure ()
   Just "quit" -> pure ()
-  Just (Text.pack -> input) -> do
+  Just (Text.dropWhile (== ' ') . Text.pack -> input) -> do
     if Text.isPrefixOf ">" input
       then do
         let message = Text.stripStart (Text.drop 1 input)
@@ -137,31 +138,34 @@ loop cfg scopeRoot = embed @InputIO (getInputLine "% ") >>= \case
             maybeGenerateTitle scopeRoot updatedHistory
             pure ()
       else do
-        handled <- handleCommand scopeRoot (Text.strip input)
-        unless handled $ embed @IO $ putStrLn "Unknown command. Use > to chat."
+        case parseCommand input of
+          Left err  -> unless (Text.null err) $ embed @IO $ putStrLn (Text.unpack err)
+          Right cmd -> do
+            handled <- handleCommand scopeRoot cmd
+            unless handled $ embed @IO $ putStrLn "Unknown command. Use > to chat."
     loop cfg scopeRoot
 
 handleCommand
   :: Members '[ State SnapshotCommit, State ProjectEntry, State ContextSpec, Embed IO ] r
   => FilePath
-  -> Text
+  -> Command
   -> Sem r Bool
-handleCommand scopeRoot input
-  | input == "/snapshot" = do
+handleCommand scopeRoot command = case command of
+  CmdSnapshot -> do
     project <- get @ProjectEntry
     mHash <- embed @IO $ latestSnapshotHash scopeRoot (project ^. projectName)
     case mHash of
       Nothing -> embed @IO $ putStrLn "No snapshots yet."
       Just h  -> embed @IO $ putStrLn (Text.unpack h)
     pure True
-  | input == "/snapshots" = do
+  CmdSnapshots -> do
     project <- get @ProjectEntry
     entries <- embed @IO $ listSnapshots scopeRoot (project ^. projectName)
     if null entries
       then embed @IO $ putStrLn "No snapshots yet."
       else embed @IO $ mapM_ (putStrLn . Text.unpack) entries
     pure True
-  | input == "/history" = do
+  CmdHistory -> do
     project <- get @ProjectEntry
     current <- get @SnapshotCommit
     history <- runSnapshotGit scopeRoot (project ^. projectName) (loadSnapshot current)
@@ -171,7 +175,7 @@ handleCommand scopeRoot input
         then embed @IO $ putStrLn "No history yet."
         else embed @IO $ mapM_ (putStrLn . renderMessage) (reverse messages)
     pure True
-  | input == "/projects" = do
+  CmdProjects -> do
     entries <- embed @IO $ listProjects scopeRoot
     if null entries
       then embed @IO $ putStrLn "No projects yet."
@@ -185,7 +189,7 @@ handleCommand scopeRoot input
           let sorted = sortOn (^. projectName) items
           for_ sorted $ \entry -> putStrLn (renderProject scopeText path entry)
     pure True
-  | input == "/context show" = do
+  CmdContextShow -> do
     spec <- get @ContextSpec
     let limitLine
           = "limits: maxBytes="
@@ -200,58 +204,41 @@ handleCommand scopeRoot input
       putStrLn limitLine
       mapM_ putStrLn pathLines
     pure True
-  | input == "/context clear" = do
+  CmdContextClear -> do
     modify @ContextSpec clearContextSpec
     embed @IO $ putStrLn "Context cleared."
     pure True
-  | Just rest <- Text.stripPrefix "/context add " input = do
-    let raw = Text.strip rest
-    if Text.null raw
-      then embed @IO $ putStrLn "Usage: /context add <path|glob>"
-      else do
-        result <- embed @IO $ validatePathSpec scopeRoot raw
-        case result of
-          Left err   -> embed @IO $ putStrLn (Text.unpack err)
-          Right path -> do
-            modify @ContextSpec (addContextPath path)
-            embed @IO $ putStrLn ("Context added: " <> path)
+  CmdContextAdd raw -> do
+    result <- embed @IO $ validatePathSpec scopeRoot raw
+    case result of
+      Left err   -> embed @IO $ putStrLn (Text.unpack err)
+      Right path -> do
+        modify @ContextSpec (addContextPath path)
+        embed @IO $ putStrLn ("Context added: " <> path)
     pure True
-  | Just rest <- Text.stripPrefix "/project use " input = do
-    let name = Text.strip rest
-    if Text.null name
-      then embed @IO $ putStrLn "Usage: /project use <name>"
-      else do
-        entries <- embed @IO $ listProjects scopeRoot
-        let scopeText = Text.pack scopeRoot
-        case find (\entry -> entry ^. projectName == name) entries of
-          Nothing    -> embed @IO $ putStrLn "Unknown project name."
-          Just entry -> if isRelated scopeText (entry ^. projectPath)
-            then switchProject scopeRoot entry
-            else embed @IO $ putStrLn "Project is not in the current folder."
+  CmdProjectUse name -> do
+    entries <- embed @IO $ listProjects scopeRoot
+    let scopeText = Text.pack scopeRoot
+    case find (\entry -> entry ^. projectName == name) entries of
+      Nothing    -> embed @IO $ putStrLn "Unknown project name."
+      Just entry -> if isRelated scopeText (entry ^. projectPath)
+        then switchProject scopeRoot entry
+        else embed @IO $ putStrLn "Project is not in the current folder."
     pure True
-  | input == "/project new" = do
-    createOrSwitch scopeRoot Nothing Nothing
+  CmdProjectNew mName mPath -> do
+    let ( nameArg, pathArg ) = normalizeProjectNewArgs mName mPath
+    createOrSwitch scopeRoot nameArg pathArg
     pure True
-  | Just rest <- Text.stripPrefix "/project new " input = do
-    let args = Text.strip rest
-    if Text.null args
-      then embed @IO $ putStrLn "Usage: /project new [name] [path]"
-      else do
-        let ( mName, mPath ) = parseNewArgs args
-        createOrSwitch scopeRoot mName mPath
+  CmdRestore hash -> do
+    project <- get @ProjectEntry
+    put @SnapshotCommit (mkSnapshotCommit hash)
+    embed @IO $ setLastSessionHash scopeRoot (project ^. projectName) hash
+    put @ProjectEntry (project & entryLastSession ?~ hash)
+    embed @IO $ putStrLn ("Restored snapshot: " <> Text.unpack hash)
     pure True
-  | Just rest <- Text.stripPrefix "/restore " input = do
-    let hash = Text.strip rest
-    if Text.null hash
-      then embed @IO $ putStrLn "Usage: /restore <hash>"
-      else do
-        project <- get @ProjectEntry
-        put @SnapshotCommit (mkSnapshotCommit hash)
-        embed @IO $ setLastSessionHash scopeRoot (project ^. projectName) hash
-        put @ProjectEntry (project & entryLastSession ?~ hash)
-        embed @IO $ putStrLn ("Restored snapshot: " <> Text.unpack hash)
+  CmdHelp mCommand -> do
+    embed @IO $ putStrLn (Text.unpack (renderHelp mCommand))
     pure True
-  | otherwise = pure False
 
 renderProject :: Text -> Text -> ProjectEntry -> String
 renderProject scopeText groupPath entry
@@ -293,13 +280,14 @@ createOrSwitch rootPath mName mPath = do
     Left err    -> embed @IO $ putStrLn (Text.unpack err)
     Right entry -> switchProject rootPath entry
 
-parseNewArgs :: Text -> ( Maybe Text, Maybe FilePath )
-parseNewArgs args = case Text.words args of
-  []          -> ( Nothing, Nothing )
-  [ token ]   -> if looksLikePath token
+normalizeProjectNewArgs :: Maybe Text -> Maybe Text -> ( Maybe Text, Maybe FilePath )
+normalizeProjectNewArgs firstArg secondArg = case ( firstArg, secondArg ) of
+  ( Nothing, Nothing )     -> ( Nothing, Nothing )
+  ( Just token, Nothing )  -> if looksLikePath token
     then ( Nothing, Just (Text.unpack token) )
     else ( Just token, Nothing )
-  name : rest -> ( Just name, Just (Text.unpack (Text.unwords rest)) )
+  ( Just name, Just path ) -> ( Just name, Just (Text.unpack path) )
+  ( Nothing, Just path )   -> ( Nothing, Just (Text.unpack path) )
 
 looksLikePath :: Text -> Bool
 looksLikePath token
