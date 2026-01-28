@@ -41,7 +41,6 @@ import qualified Data.ByteString.Char8    as BS8
 import           Data.Conduit             ( (.|), runConduitRes )
 import qualified Data.Conduit.Combinators as C
 import qualified Data.Conduit.List        as CL
-import           Data.IORef               ( modifyIORef', newIORef, readIORef, writeIORef )
 import           Data.Text                ( Text )
 import qualified Data.Text                as Text
 import           Data.Text.Encoding       ( encodeUtf8 )
@@ -134,44 +133,39 @@ runLLMHttpSilent = interpret $ \case
 
 streamResponse :: HTTP.Request -> IO Text
 streamResponse req = do
-  fineRef <- newIORef False
-  chunksRef <- newIORef []
-  runConduitRes
+  chunks <- runConduitRes
     $ httpSource req getResponseBody
     .| C.linesUnboundedAscii
     .| C.filter (BS8.isPrefixOf "data: ")
     .| C.map (BS8.drop 6)
     .| C.takeWhile (/= "[DONE]")
     .| CL.mapMaybe decodeChunk
-    .| C.mapM_ (\chunk -> liftIO $ do
-                  TIO.putStr chunk
-                  modifyIORef' chunksRef (chunk :)
-                  writeIORef fineRef True
-                  hFlush stdout)
-  isFine <- readIORef fineRef
-  if isFine
+    .| C.mapM (\chunk -> liftIO $ do
+                 TIO.putStr chunk
+                 hFlush stdout
+                 pure chunk)
+    .| C.sinkList
+  if null chunks
     then do
-      chunks <- readIORef chunksRef
-      pure (Text.concat (reverse chunks))
-    else do
       TIO.putStrLn "[no content in response]"
       pure Text.empty
+    else do
+      TIO.putStrLn ""
+      pure (Text.concat chunks)
 
 streamResponseSilent :: HTTP.Request -> IO Text
 streamResponseSilent req = do
-  chunksRef <- newIORef []
-  runConduitRes
+  chunks <- runConduitRes
     $ httpSource req getResponseBody
     .| C.linesUnboundedAscii
     .| C.filter (BS8.isPrefixOf "data: ")
     .| C.map (BS8.drop 6)
     .| C.takeWhile (/= "[DONE]")
     .| CL.mapMaybe decodeChunk
-    .| C.mapM_ (\chunk -> liftIO (modifyIORef' chunksRef (chunk :)))
-  chunks <- readIORef chunksRef
+    .| C.sinkList
   if null chunks
     then pure Text.empty
-    else pure (Text.concat (reverse chunks))
+    else pure (Text.concat chunks)
 
 decodeChunk :: BS.ByteString -> Maybe Text
 decodeChunk bs = do
