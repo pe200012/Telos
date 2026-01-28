@@ -5,16 +5,15 @@
 module FileSystem.Local ( runFileSystemLocal ) where
 
 import           Control.Exception  ( IOException, catch, throwIO )
-import           Control.Monad      ( forM )
 
 import qualified Data.ByteString    as BS
-import           Data.List          ( isPrefixOf, sort )
-import           Data.Text          ( Text )
 import qualified Data.Text.Encoding as Text
 
 import           Effects.FileSystem ( FileSystem(..) )
 
 import           Polysemy           ( Embed, Member, Sem, embed, interpret )
+
+import           Relude
 
 import           System.Directory   ( canonicalizePath
                                     , doesDirectoryExist
@@ -23,6 +22,7 @@ import           System.Directory   ( canonicalizePath
                                     , makeAbsolute
                                     )
 import           System.FilePath    ( (</>), addTrailingPathSeparator, isAbsolute, normalise )
+import           System.IO.Error    ( userError )
 
 runFileSystemLocal :: Member (Embed IO) r => FilePath -> Sem (FileSystem ': r) a -> Sem r a
 runFileSystemLocal scopeRoot = interpret $ \case

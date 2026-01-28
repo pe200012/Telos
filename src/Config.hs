@@ -15,19 +15,17 @@ module Config
   , loadConfig
   ) where
 
-import           Control.Lens       ( (&), (.~), (^.), makeFieldsNoPrefix, non )
+import           Control.Lens     ( (.~), (^.), makeFieldsNoPrefix, non )
 
-import           Data.Text          ( Text )
-import qualified Data.Text          as Text
-import qualified Data.Text.IO       as TIO
+import qualified Data.Text        as Text
+import qualified Data.Text.IO     as TIO
 
-import           GHC.Generics       ( Generic )
+import           Relude
 
-import           System.Directory   ( createDirectoryIfMissing, doesFileExist, getHomeDirectory )
-import           System.Environment ( lookupEnv )
-import           System.FilePath    ( (</>), takeDirectory )
+import           System.Directory ( createDirectoryIfMissing, doesFileExist, getHomeDirectory )
+import           System.FilePath  ( (</>), takeDirectory )
 
-import           Toml               ( (.=), TomlCodec )
+import           Toml             ( (.=), TomlCodec )
 import qualified Toml
 
 data Config = Config { _apiKey :: Text, _baseUrl :: Text, _model :: Text, _temperature :: Double }

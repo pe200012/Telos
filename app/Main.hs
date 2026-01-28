@@ -6,6 +6,8 @@ import           Config    ( loadConfig )
 
 import qualified Data.Text as Text
 
+import           Relude
+
 main :: IO ()
 main = do
   loaded <- loadConfig

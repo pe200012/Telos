@@ -24,9 +24,8 @@ import           Data.Aeson      ( FromJSON(parseJSON)
                                  , genericToJSON
                                  , withText
                                  )
-import           Data.Text       ( Text )
 
-import           GHC.Generics    ( Generic )
+import           Relude
 
 data Role = System | User | Assistant
   deriving ( Eq, Show )

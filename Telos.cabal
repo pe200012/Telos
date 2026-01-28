@@ -32,7 +32,6 @@ library
       Effects.LLM
       Effects.Snapshot
       FileSystem.Local
-      Lib
       LLM.Http
       Snapshot.Git
       Types.Chat
@@ -51,6 +50,7 @@ library
       LambdaCase
       MultiParamTypeClasses
       MultiWayIf
+      NoImplicitPrelude
       OverloadedStrings
       RankNTypes
       ScopedTypeVariables
@@ -75,6 +75,7 @@ library
     , memory
     , polysemy
     , process
+    , relude
     , text
     , time
     , tomland
@@ -97,6 +98,7 @@ executable Telos-exe
       LambdaCase
       MultiParamTypeClasses
       MultiWayIf
+      NoImplicitPrelude
       OverloadedStrings
       RankNTypes
       ScopedTypeVariables
@@ -122,6 +124,7 @@ executable Telos-exe
     , memory
     , polysemy
     , process
+    , relude
     , text
     , time
     , tomland
@@ -145,6 +148,7 @@ test-suite Telos-test
       LambdaCase
       MultiParamTypeClasses
       MultiWayIf
+      NoImplicitPrelude
       OverloadedStrings
       RankNTypes
       ScopedTypeVariables
@@ -170,6 +174,7 @@ test-suite Telos-test
     , memory
     , polysemy
     , process
+    , relude
     , temporary
     , text
     , time

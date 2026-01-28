@@ -23,10 +23,8 @@ import           Config                   ( Config
                                           , HasTemperature(..)
                                           )
 
-import           Control.Applicative      ( asum )
-import           Control.Lens             ( (&), (.~), (^?), view )
+import           Control.Lens             ( (.~), (^?), view )
 import           Control.Lens.TH          ( makeFieldsNoPrefix )
-import           Control.Monad.IO.Class   ( liftIO )
 
 import           Data.Aeson               ( ToJSON(toJSON)
                                           , Value
@@ -41,14 +39,10 @@ import qualified Data.ByteString.Char8    as BS8
 import           Data.Conduit             ( (.|), runConduitRes )
 import qualified Data.Conduit.Combinators as C
 import qualified Data.Conduit.List        as CL
-import           Data.Text                ( Text )
 import qualified Data.Text                as Text
-import           Data.Text.Encoding       ( encodeUtf8 )
 import qualified Data.Text.IO             as TIO
 
 import           Effects.LLM              ( LLM(AskLLM) )
-
-import           GHC.Generics             ( Generic )
 
 import qualified Network.HTTP.Client      as HTTP
 import           Network.HTTP.Simple      ( getResponseBody
@@ -63,7 +57,7 @@ import           Polysemy                 ( Embed, Members, Sem, embed, interpre
 import           Polysemy.Input           ( Input, input )
 import           Polysemy.State           ( State, get )
 
-import           System.IO                ( hFlush, stdout )
+import           Relude                   hiding ( State, get )
 
 import           Types.Chat               ( Message, Role(..) )
 

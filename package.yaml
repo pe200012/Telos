@@ -39,6 +39,7 @@ dependencies:
   - memory
   - polysemy
   - process
+  - relude
   - text
   - time
   - tomland
@@ -63,6 +64,7 @@ default-extensions:
   - LambdaCase
   - MultiParamTypeClasses
   - MultiWayIf
+  - NoImplicitPrelude
   - OverloadedStrings
   - RankNTypes
   - ScopedTypeVariables

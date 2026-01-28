@@ -9,15 +9,12 @@ import           CLI.Context             ( buildContextMessage
                                          )
 
 import           Control.Exception       ( SomeException, bracket, try )
-import           Control.Lens            ( (&), (.~), view )
-import           Control.Monad           ( void )
+import           Control.Lens            ( (.~), view )
 
 import           Crypto.Hash             ( Digest, SHA256, hash )
 
 import           Data.ByteArray.Encoding ( Base(Base16), convertToBase )
 import qualified Data.ByteString.Char8   as BS8
-import           Data.List               ( sortOn )
-import           Data.Text               ( Text )
 import qualified Data.Text               as Text
 import           Data.Text.Encoding      ( encodeUtf8 )
 
@@ -25,11 +22,11 @@ import           FileSystem.Local        ( runFileSystemLocal )
 
 import           Polysemy                ( runM )
 
-import           Snapshot.Git            ( ProjectEntry
-                                         , createProject
+import           Relude                  hiding ( encodeUtf8, lookupEnv )
+
+import           Snapshot.Git            ( createProject
                                          , listProjects
                                          , projectName
-                                         , projectPath
                                          , renameProject
                                          )
 
@@ -38,7 +35,6 @@ import           System.Directory        ( createDirectoryIfMissing
                                          , removeDirectoryRecursive
                                          )
 import           System.Environment      ( lookupEnv, setEnv, unsetEnv )
-import           System.Exit             ( exitFailure )
 import           System.FilePath         ( (</>), takeDirectory )
 import           System.IO.Temp          ( createTempDirectory )
 
@@ -96,9 +92,9 @@ testListProjectsReadsIndex = withTempCache $ \tempDir -> do
 testCreateProjectRejectsDuplicate :: IO Bool
 testCreateProjectRejectsDuplicate = withTempCache $ \_ -> do
   let scopeRoot = "/tmp/telos-project"
-  first <- createProject scopeRoot "demo" "/tmp/proj"
-  second <- createProject scopeRoot "demo" "/tmp/proj"
-  case ( first, second ) of
+  firstResult <- createProject scopeRoot "demo" "/tmp/proj"
+  secondResult <- createProject scopeRoot "demo" "/tmp/proj"
+  case ( firstResult, secondResult ) of
     ( Right _, Left _ ) -> pure True
     _ -> do
       putStrLn "Expected duplicate project name to be rejected"

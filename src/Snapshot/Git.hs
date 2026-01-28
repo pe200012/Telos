@@ -32,10 +32,9 @@ module Snapshot.Git
   , defaultProjectIndex
   ) where
 
-import           Control.Exception       ( catch, throwIO )
-import           Control.Lens            ( (%~), (&), (.~), (?~), (^.), view )
+import           Control.Exception       ( IOException, catch, throwIO )
+import           Control.Lens            ( (%~), (?~), (^.) )
 import           Control.Lens.TH         ( makeFieldsNoPrefix )
-import           Control.Monad           ( unless )
 
 import           Crypto.Hash             ( Digest, SHA256, hash )
 
@@ -51,27 +50,23 @@ import           Data.Aeson              ( FromJSON(parseJSON)
 import           Data.ByteArray.Encoding ( Base(Base16), convertToBase )
 import qualified Data.ByteString.Char8   as BS8
 import qualified Data.ByteString.Lazy    as LBS
-import           Data.Map.Strict         ( Map )
 import qualified Data.Map.Strict         as Map
-import           Data.Text               ( Text )
 import qualified Data.Text               as Text
-import           Data.Text.Encoding      ( encodeUtf8 )
 import           Data.Time.Clock         ( getCurrentTime )
 
-import           Effects.Snapshot        ( HasUnSnapshotCommit(..), Snapshot(..), SnapshotCommit )
-
-import           GHC.Generics            ( Generic )
+import           Effects.Snapshot        ( HasUnSnapshotCommit(..), Snapshot(..) )
 
 import           Polysemy                ( Embed, Member, Sem, embed, interpret )
+
+import           Relude
 
 import           System.Directory        ( createDirectoryIfMissing
                                          , doesDirectoryExist
                                          , doesFileExist
                                          , getHomeDirectory
                                          )
-import           System.Environment      ( lookupEnv )
 import           System.FilePath         ( (</>), takeDirectory )
-import           System.IO.Error         ( isDoesNotExistError )
+import           System.IO.Error         ( isDoesNotExistError, userError )
 import           System.Process          ( readProcess )
 
 import           Types.Chat              ( Message )
@@ -216,7 +211,7 @@ renameProject scopeRoot oldName newName = do
         pure (Right (newProjectEntry newName (meta ^. path) (meta ^. lastSession)))
 
 listProjects :: FilePath -> IO [ ProjectEntry ]
-listProjects scopeRoot = map toEntry . Map.toList . view projects <$> loadIndex scopeRoot
+listProjects scopeRoot = map toEntry . Map.toList . (^. projects) <$> loadIndex scopeRoot
   where
     toEntry ( name, meta ) = newProjectEntry name (meta ^. path) (meta ^. lastSession)
 
@@ -240,13 +235,13 @@ updateLastSession scopeRoot projName = do
 lastSessionHash :: FilePath -> Text -> IO (Maybe Text)
 lastSessionHash scopeRoot projName = do
   idx <- loadIndex scopeRoot
-  let currentProjects = view projects idx
-  pure $ Map.lookup projName currentProjects >>= view lastSession
+  let currentProjects = idx ^. projects
+  pure $ Map.lookup projName currentProjects >>= (^. lastSession)
 
 setLastSessionHash :: FilePath -> Text -> Text -> IO ()
 setLastSessionHash scopeRoot projName commitHash = do
   idx <- loadIndex scopeRoot
-  let currentProjects = view projects idx
+  let currentProjects = idx ^. projects
   case Map.lookup projName currentProjects of
     Nothing   -> throwIO (userError ("Unknown project name: " <> Text.unpack projName))
     Just meta -> do
@@ -266,7 +261,7 @@ xdgCacheDir = do
 git :: FilePath -> [ String ] -> IO String
 git cwd args = readProcess "git" ("-C" : cwd : args) ""
 
-gitMaybe :: FilePath -> [ String ] -> IO (Either IOError String)
+gitMaybe :: FilePath -> [ String ] -> IO (Either IOException String)
 gitMaybe cwd args = (Right <$> git cwd args) `catch` \e -> if isDoesNotExistError e
   then throwIO e
   else pure (Left e)
@@ -274,7 +269,7 @@ gitMaybe cwd args = (Right <$> git cwd args) `catch` \e -> if isDoesNotExistErro
 sha256Hex :: Text -> Text
 sha256Hex payload
   = let
-      digest   = hash (encodeUtf8 payload) :: Digest SHA256
+      digest   = hash @ByteString (encodeUtf8 payload) :: Digest SHA256
       hexBytes = convertToBase Base16 digest
     in 
       Text.pack (BS8.unpack hexBytes)

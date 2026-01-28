@@ -2,9 +2,9 @@
 
 module Effects.FileSystem ( FileSystem(..), listFiles, readText ) where
 
-import           Data.Text ( Text )
+import           Polysemy ( Member, Sem, send )
 
-import           Polysemy  ( Member, Sem, send )
+import           Relude
 
 data FileSystem m a where
   ListFiles :: FilePath -> FileSystem m [ FilePath ]

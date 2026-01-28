@@ -3,9 +3,9 @@
 
 module Effects.LLM ( LLM(..), askLLM ) where
 
-import           Data.Text  ( Text )
-
 import           Polysemy   ( makeSem )
+
+import           Relude
 
 import           Types.Chat ( Message )
 

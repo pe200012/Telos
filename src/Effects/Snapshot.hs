@@ -15,9 +15,9 @@ module Effects.Snapshot
 
 import           Control.Lens.TH ( makeFieldsNoPrefix )
 
-import           Data.Text       ( Text )
-
 import           Polysemy        ( makeSem )
+
+import           Relude
 
 import           Types.Chat      ( Message )
 

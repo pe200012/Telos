@@ -17,15 +17,10 @@ import           CLI.Context              ( ContextSpec
 
 import           Config                   ( Config )
 
-import           Control.Lens             ( (&), (?~), (^.), non )
-import           Control.Monad            ( unless, when )
+import           Control.Lens             ( (?~), (^.), non )
 
 import           Data.Char                ( isAlphaNum )
-import           Data.Foldable            ( for_ )
-import           Data.List                ( find, sortOn )
 import qualified Data.Map.Strict          as Map
-import           Data.Maybe               ( listToMaybe )
-import           Data.Text                ( Text )
 import qualified Data.Text                as Text
 
 import           Effects.FileSystem       ( FileSystem )
@@ -44,6 +39,8 @@ import           Polysemy                 ( Embed, Members, Sem, embed, runM )
 import           Polysemy.Embed           ( runEmbedded )
 import           Polysemy.Input           ( Input, runInputConst )
 import           Polysemy.State           ( State, evalState, get, modify, put, runState )
+
+import           Relude                   hiding ( State, evalState, get, modify, put, runState )
 
 import           Snapshot.Git             ( ProjectEntry
                                           , createProject
@@ -332,7 +329,7 @@ initCurrentProject scopeRoot = do
       let placeholder = nextPlaceholderName (map (^. projectName) entries)
       created <- createProject scopeRoot placeholder scopeRoot
       case created of
-        Left err    -> error (Text.unpack err)
+        Left err    -> error err
         Right entry -> pure entry
 
 preferNamed :: [ ProjectEntry ] -> Maybe ProjectEntry

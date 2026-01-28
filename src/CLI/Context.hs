@@ -16,16 +16,16 @@ module CLI.Context
   , validatePathSpec
   ) where
 
-import           Control.Lens       ( (%~), (&), (.~), (^.) )
+import           Control.Lens       ( (%~), (.~), (^.) )
 import           Control.Lens.TH    ( makeFieldsNoPrefix )
 
-import           Data.List          ( isPrefixOf, nub )
-import           Data.Text          ( Text )
 import qualified Data.Text          as Text
 
 import           Effects.FileSystem ( FileSystem, listFiles, readText )
 
-import           Polysemy           ( Embed, Members, Sem, embed )
+import           Polysemy           ( Embed, Members, Sem )
+
+import           Relude
 
 import           System.Directory   ( canonicalizePath )
 import           System.FilePath    ( (</>)
@@ -65,7 +65,7 @@ buildContextMessage
   :: Members '[ FileSystem, Embed IO ] r => FilePath -> ContextSpec -> Sem r (Maybe Message)
 buildContextMessage scopeRoot spec = do
   files <- resolvePaths scopeRoot (spec ^. paths)
-  let unique = nub files
+  let unique = ordNub files
   blocks <- buildBlocks scopeRoot unique (spec ^. maxBytes) (spec ^. maxPerFile)
   if null blocks
     then pure Nothing
@@ -92,20 +92,20 @@ buildBlocks :: Members '[ FileSystem, Embed IO ] r
             -> Int
             -> Int
             -> Sem r [ Text ]
-buildBlocks scopeRoot files maxBytes maxPerFile = go files 0 []
+buildBlocks scopeRoot files maxTotal maxPer = go files 0 []
   where
     go [] _ acc = pure (reverse acc)
     go (path : rest) total acc
-      | total >= maxBytes = pure (reverse acc)
+      | total >= maxTotal = pure (reverse acc)
       | otherwise = do
         content <- readText path
         case content of
           Nothing   -> go rest total acc
           Just text -> do
-            let truncated = truncateText maxPerFile text
+            let truncated = truncateText maxPer text
                 block     = renderBlock (normalizeRel scopeRoot path) truncated
                 newTotal  = total + Text.length block
-            if newTotal > maxBytes
+            if newTotal > maxTotal
               then pure (reverse acc)
               else go rest newTotal (block : acc)
 
@@ -113,10 +113,10 @@ renderBlock :: Text -> Text -> Text
 renderBlock path content = Text.unlines [ "# path: " <> path, "```", content, "```" ]
 
 truncateText :: Int -> Text -> Text
-truncateText maxPerFile text
-  = if Text.length text <= maxPerFile
+truncateText maxLimit text
+  = if Text.length text <= maxLimit
     then text
-    else Text.take maxPerFile text <> "\n... [truncated]"
+    else Text.take maxLimit text <> "\n... [truncated]"
 
 wrapBlock :: Text -> Text
 wrapBlock inner = Text.unlines [ "<filesystem>", inner, "</filesystem>" ]
