@@ -305,15 +305,13 @@ maybeGenerateTitle scopeRoot history = do
         entries <- embed @IO $ listProjects scopeRoot
         let existing   = filter (/= name) (map (^. projectName) entries)
             uniqueName = makeUniqueName desired existing
-        if uniqueName == name
-          then pure ()
-          else do
-            renamed <- embed @IO $ renameProject scopeRoot name uniqueName
-            case renamed of
-              Left err    -> embed @IO $ putStrLn ("Project rename failed: " <> Text.unpack err)
-              Right entry -> do
-                put @ProjectEntry entry
-                embed @IO $ putStrLn ("Project titled: " <> Text.unpack uniqueName)
+        unless (uniqueName == name) $ do
+          renamed <- embed @IO $ renameProject scopeRoot name uniqueName
+          case renamed of
+            Left err    -> embed @IO $ putStrLn ("Project rename failed: " <> Text.unpack err)
+            Right entry -> do
+              put @ProjectEntry entry
+              embed @IO $ putStrLn ("Project titled: " <> Text.unpack uniqueName)
 
 shouldGenerateTitle :: Text -> [ Message ] -> Bool
 shouldGenerateTitle name history
