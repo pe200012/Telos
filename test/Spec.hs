@@ -182,6 +182,23 @@ spec = do
             stripAnsi line `shouldBe` "*not italic* and _not_"
             line `shouldSatisfy` (not . Text.isInfixOf "\ESC[")
 
+      it "renders nested lists with indentation" $ do
+        let linesOut = renderMarkdown "- Main\n  - Sub\n    - Nested\n"
+        map stripAnsi linesOut `shouldBe` [ "- Main", "  - Sub", "    - Nested" ]
+
+      it "renders list-like text inside quotes stably" $ do
+        let linesOut = renderMarkdown "> - item\n"
+        case linesOut of
+          []       -> fail "Expected quoted line"
+          line : _ -> do
+            stripAnsi line `shouldBe` "| - item"
+            line `shouldSatisfy` Text.isInfixOf "\ESC["
+
+      it "keeps rendering as code for unclosed fences" $ do
+        let linesOut = renderMarkdown "```python\nx\nstill\n"
+        map stripAnsi linesOut `shouldBe` [ "x", "still" ]
+        linesOut `shouldSatisfy` all (Text.isInfixOf "\ESC[")
+
   describe "Markdown.Stream" $ do
     describe "pushDelta" $ do
       it "does not output before newline" $ do
@@ -200,6 +217,15 @@ spec = do
             hasWorld      = "World" `elem` map stripAnsi out2
         hasHello `shouldBe` True
         hasWorld `shouldBe` True
+
+      it "flushes incomplete last line inside unclosed fences" $ do
+        let st0           = newStreamState
+            ( st1, out1 ) = pushDelta st0 "```python\nx\nstill"
+            ( _, out2 )   = finalizeStream st1
+        map stripAnsi out1 `shouldBe` [ "x" ]
+        map stripAnsi out2 `shouldBe` [ "still" ]
+        out1 `shouldSatisfy` all (Text.isInfixOf "\ESC[")
+        out2 `shouldSatisfy` all (Text.isInfixOf "\ESC[")
 
 -- Helper functions
 
