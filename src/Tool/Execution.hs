@@ -155,8 +155,8 @@ runBash bashSpec = do
   if cmd `elem` allowedCommands
     then do
       let argv = maybe [] (map Text.unpack) (bashArgs bashSpec)
-      output <- readProcess (Text.unpack cmd) argv ""
-      pure (Text.pack output)
+      (Text.pack <$> readProcess (Text.unpack cmd) argv "") `catch` \(e :: IOException) -> pure
+        (Text.pack (displayException e))
     else pure "Command not allowed."
 
 allowedCommands :: [ Text ]

@@ -20,13 +20,23 @@ import           Config                   ( Config )
 
 import           Control.Lens             ( (?~), (^.), non )
 
-import           Data.Aeson               ( (.:), Value, eitherDecodeStrict', encode, withObject )
+import           Data.Aeson               ( (.:)
+                                          , Result(..)
+                                          , Value(..)
+                                          , eitherDecodeStrict'
+                                          , encode
+                                          , fromJSON
+                                          , withObject
+                                          )
+import qualified Data.Aeson.Key           as AesonKey
+import qualified Data.Aeson.KeyMap        as KeyMap
 import           Data.Aeson.Types         ( Parser, parseEither )
 import qualified Data.ByteString.Lazy     as LBS
 import           Data.Char                ( isAlphaNum )
 import qualified Data.Map.Strict          as Map
 import qualified Data.Text                as Text
 import qualified Data.Text.Encoding       as Text
+import           Data.Time.Clock          ( NominalDiffTime, diffUTCTime, getCurrentTime )
 
 import           Effects.FileSystem       ( FileSystem )
 import           Effects.LLM              ( LLMResponse, askLLM, responseText, responseToolCalls )
@@ -88,7 +98,8 @@ import           System.Directory         ( XdgDirectory(XdgCache)
 import           System.FilePath          ( (</>) )
 
 import           Tool.Execution           ( executeToolCall )
-import           Tool.Registry            ( toolInventoryMessage
+import           Tool.Registry            ( ToolResult
+                                          , toolInventoryMessage
                                           , toolResultContent
                                           , toolResultId
                                           , toolSpecs
@@ -532,9 +543,14 @@ runToolLoop scopeRoot toolsAvailable depth calls
   | depth >= 3 = pure ()
   | otherwise = do
     unless (null calls) $ do
-      logToolCalls calls
       modify (mkToolCallMessage calls :)
-      results <- traverse (executeToolCall scopeRoot) calls
+      results <- forM calls $ \call -> do
+        logToolCallStart call
+        started <- embed @IO getCurrentTime
+        result <- executeToolCall scopeRoot call
+        finished <- embed @IO getCurrentTime
+        logToolCallEnd call result (diffUTCTime finished started)
+        pure result
       for_ results $ \result -> modify
         (mkToolResultMessage (result ^. toolResultId) (result ^. toolResultContent) :)
       followup <- runLLMHttpWithTools toolsAvailable $ askLLM (mkMessage User "")
@@ -544,16 +560,174 @@ runToolLoop scopeRoot toolsAvailable depth calls
         then unless (Text.null replyText) $ modify (mkMessage Assistant replyText :)
         else runToolLoop scopeRoot toolsAvailable (depth + 1) nextCalls
 
-logToolCalls :: Members '[ Embed IO ] r => [ ToolCall ] -> Sem r ()
-logToolCalls calls = embed @IO $ mapM_ (putStrLn . Text.unpack . renderToolCall) calls
+logToolCallStart :: Members '[ Embed IO ] r => ToolCall -> Sem r ()
+logToolCallStart call = embed @IO $ putStrLn (Text.unpack (renderToolStart call))
 
-renderToolCall :: ToolCall -> Text
-renderToolCall call
+logToolCallEnd :: Members '[ Embed IO ] r => ToolCall -> ToolResult -> NominalDiffTime -> Sem r ()
+logToolCallEnd call result elapsed = embed @IO $ do
+  let name    = call ^. toolFunction . functionName
+      out     = result ^. toolResultContent
+      ok      = isToolOk name out
+      outLen  = Text.length out
+      ms      = floor @Double (realToFrac elapsed * 1000)
+      endLine = renderToolEnd ok ms outLen
+  putStrLn (Text.unpack endLine)
+  when (shouldInlineOutput name ok out) $ do
+    outputToolBody out
+  when (shouldPreviewOnFailure name ok out) $ do
+    outputToolPreview out
+
+renderToolStart :: ToolCall -> Text
+renderToolStart call
   = let
       name = call ^. toolFunction . functionName
       args = call ^. toolFunction . functionArguments
     in 
-      "Tool call: " <> name <> " args=" <> Text.take 200 args
+      toolTag <> " " <> toolNameStyle name <> "  " <> summarizeToolArgs name args
+
+renderToolEnd :: Bool -> Int -> Int -> Text
+renderToolEnd ok ms outLen
+  = toolTag
+  <> " "
+  <> (if ok
+        then okStyle "ok"
+        else failStyle "fail")
+  <> "  out="
+  <> Text.pack (show outLen)
+  <> " chars"
+  <> "  ms="
+  <> Text.pack (show ms)
+
+outputToolBody :: Text -> IO ()
+outputToolBody body = for_ (Text.lines body) $ \ln -> putStrLn
+  (Text.unpack (toolBodyPrefix <> ln <> ansiReset))
+
+outputToolPreview :: Text -> IO ()
+outputToolPreview body = do
+  let maxLines = 40
+      maxChars = 4000
+      ls       = Text.lines body
+      ls'      = take maxLines ls
+      clipped  = Text.unlines ls'
+  outputToolBody (Text.take maxChars clipped)
+  when (Text.length body > maxChars || length ls > maxLines)
+    $ putStrLn (Text.unpack (toolBodyPrefix <> "... (truncated)" <> ansiReset))
+
+shouldInlineOutput :: Text -> Bool -> Text -> Bool
+shouldInlineOutput name ok body
+  | not ok = False
+  | name `elem` [ "bash", "write_file", "apply_patch" ]
+    = isShortOutput body && body /= "ok" && not (Text.null body)
+  | otherwise = False
+
+shouldPreviewOnFailure :: Text -> Bool -> Text -> Bool
+shouldPreviewOnFailure name ok body
+  = not ok && name `elem` [ "bash", "write_file", "apply_patch" ] && not (Text.null body)
+
+isShortOutput :: Text -> Bool
+isShortOutput t = Text.length t <= 1200 && length (Text.lines t) <= 30
+
+isToolOk :: Text -> Text -> Bool
+isToolOk name out
+  | Text.isPrefixOf "Invalid arguments" out = False
+  | out == "Unknown tool" = False
+  | name == "bash"
+    && (out == "Command not allowed."
+        || Text.isInfixOf "readProcess" out
+        || Text.isInfixOf "ExitFailure" out)
+    = False
+  | name == "apply_patch"
+    && let
+        lower = Text.toLower out
+      in 
+        Text.isInfixOf "error" lower
+        || Text.isInfixOf "fatal" lower
+        || Text.isInfixOf "patch failed" lower
+        || Text.isInfixOf "readProcess" out
+    = False
+  | otherwise = True
+
+summarizeToolArgs :: Text -> Text -> Text
+summarizeToolArgs name argsText = case eitherDecodeStrict' (Text.encodeUtf8 argsText) of
+  Left _  -> "args=" <> compact 120 argsText
+  Right v -> case name of
+    "list_files" -> "path=" <> fromMaybe "?" (lookupString "path" v)
+    "read_file" -> "path=" <> fromMaybe "?" (lookupString "path" v)
+    "write_file" -> let
+        p = fromMaybe "?" (lookupString "path" v)
+        c = fromMaybe "" (lookupString "content" v)
+      in 
+        "path=" <> p <> "  chars=" <> Text.pack (show (Text.length c))
+    "grep" -> let
+        p   = fromMaybe "?" (lookupString "path" v)
+        pat = fromMaybe "?" (lookupString "pattern" v)
+      in 
+        "path=" <> p <> "  pattern=" <> compact 80 pat
+    "bash" -> let
+        cmd  = fromMaybe "?" (lookupString "command" v)
+        args = fromMaybe [] (lookupStringArray "args" v)
+        full = Text.intercalate " " (cmd : args)
+      in 
+        "cmd=" <> compact 160 full
+    "apply_patch" -> let
+        p         = fromMaybe "" (lookupString "patch" v)
+        firstLine = fromMaybe "" (viaNonEmpty head (Text.lines p))
+      in 
+        "patch=" <> Text.pack (show (Text.length p)) <> " chars  " <> compact 120 firstLine
+    _ -> "args=" <> compact 120 argsText
+
+lookupString :: Text -> Value -> Maybe Text
+lookupString key = \case
+  Object obj -> case KeyMap.lookup (AesonKey.fromText key) obj of
+    Just (String t) -> Just t
+    _ -> Nothing
+  _          -> Nothing
+
+lookupStringArray :: Text -> Value -> Maybe [ Text ]
+lookupStringArray key = \case
+  Object obj -> case KeyMap.lookup (AesonKey.fromText key) obj of
+    Just v -> case fromJSON v of
+      Success xs -> Just xs
+      Error _    -> Nothing
+    _      -> Nothing
+  _          -> Nothing
+
+compact :: Int -> Text -> Text
+compact n t
+  = let
+      oneLine = Text.replace "\n" " " (Text.strip t)
+    in 
+      if Text.length oneLine <= n
+        then oneLine
+        else Text.take n oneLine <> "..."
+
+toolTag :: Text
+toolTag = ansiDim <> "[tool]" <> ansiReset
+
+toolNameStyle :: Text -> Text
+toolNameStyle name = ansiBold <> ansiCyan <> name <> ansiReset
+
+okStyle :: Text -> Text
+okStyle t = ansiBold <> ansiGreen <> t <> ansiReset
+
+failStyle :: Text -> Text
+failStyle t = ansiBold <> ansiRed <> t <> ansiReset
+
+toolBodyPrefix :: Text
+toolBodyPrefix = ansiDim <> "| " <> ansiReset
+
+ansiReset, ansiDim, ansiBold, ansiCyan, ansiGreen, ansiRed :: Text
+ansiReset = "\ESC[0m"
+
+ansiDim = "\ESC[2m"
+
+ansiBold = "\ESC[1m"
+
+ansiCyan = "\ESC[36m"
+
+ansiGreen = "\ESC[32m"
+
+ansiRed = "\ESC[31m"
 
 parseTextToolCall :: Text -> Maybe ToolCall
 parseTextToolCall text = do
