@@ -123,6 +123,8 @@ import           Types.Chat               ( Message
                                           , mkToolCallMessage
                                           , mkToolResultMessage
                                           , role
+                                          , toolCallId
+                                          , toolCalls
                                           )
 import           Types.ToolCall           ( ToolCall
                                           , functionArguments
@@ -322,15 +324,15 @@ handleResponse
   -> LLMResponse
   -> Sem r ()
 handleResponse scopeRoot toolsAvailable response = do
-  let toolCalls = response ^. responseToolCalls
+  let calls     = response ^. responseToolCalls
       textReply = response ^. responseText
-  if null toolCalls
+  if null calls
     then case toolsAvailable of
       Nothing -> case parseTextToolCall textReply of
         Nothing   -> unless (Text.null textReply) $ modify (mkMessage Assistant textReply :)
         Just call -> runToolLoop scopeRoot toolsAvailable 0 [ call ]
       Just _  -> unless (Text.null textReply) $ modify (mkMessage Assistant textReply :)
-    else runToolLoop scopeRoot toolsAvailable 0 toolCalls
+    else runToolLoop scopeRoot toolsAvailable 0 calls
 
 renderProject :: Text -> Text -> ProjectEntry -> String
 renderProject scopeText groupPath entry
@@ -346,15 +348,42 @@ isRelated :: Text -> Text -> Bool
 isRelated scopeText pathText = pathText == scopeText || Text.isPrefixOf (scopeText <> "/") pathText
 
 renderMessage :: Message -> String
-renderMessage msg
-  = let
-      label = case msg ^. role of
-        System    -> "System"
-        User      -> "User"
-        Assistant -> "Assistant"
-        Tool      -> "Tool"
+renderMessage msg = case msg ^. role of
+  System    -> "System: " <> Text.unpack (msg ^. content)
+  User      -> "User: " <> Text.unpack (msg ^. content)
+  Assistant -> case msg ^. toolCalls of
+    Just calls -> Text.unpack (Text.unlines (map renderToolCallForHistory calls))
+    Nothing    -> "Assistant: " <> Text.unpack (msg ^. content)
+  Tool      -> let
+      prefix = case msg ^. toolCallId of
+        Nothing -> "Tool: "
+        Just i  -> "Tool(" <> Text.unpack i <> "): "
+      body   = summarizeToolOutputForHistory (msg ^. content)
     in 
-      label <> ": " <> Text.unpack (msg ^. content)
+      prefix <> Text.unpack body
+
+renderToolCallForHistory :: ToolCall -> Text
+renderToolCallForHistory call
+  = let
+      name = call ^. toolFunction . functionName
+      args = call ^. toolFunction . functionArguments
+    in 
+      "ToolCall: " <> name <> "  " <> summarizeToolArgs name args
+
+summarizeToolOutputForHistory :: Text -> Text
+summarizeToolOutputForHistory out
+  | Text.null (Text.strip out) = ""
+  | isShort out = Text.stripEnd out
+  | otherwise
+    = let
+        maxLines = 12
+        maxChars = 1200
+        ls       = take maxLines (Text.lines out)
+        clipped  = Text.unlines ls
+      in 
+        Text.take maxChars clipped <> "\n... (truncated)"
+  where
+    isShort t = Text.length t <= 600 && length (Text.lines t) <= 12
 
 createOrSwitch :: Members '[ State SnapshotCommit, State ProjectEntry, Embed IO ] r
                => FilePath
@@ -492,15 +521,17 @@ titlePrompt history
       Text.unlines (header <> map formatMessage history)
 
 formatMessage :: Message -> Text
-formatMessage msg
-  = let
-      label = case msg ^. role of
-        System    -> "System"
-        User      -> "User"
-        Assistant -> "Assistant"
-        Tool      -> "Tool"
-    in 
-      label <> ": " <> Text.take 200 (msg ^. content)
+formatMessage msg = case msg ^. role of
+  System    -> "System: " <> Text.take 200 (msg ^. content)
+  User      -> "User: " <> Text.take 200 (msg ^. content)
+  Assistant -> case msg ^. toolCalls of
+    Just calls -> let
+        rendered
+          = Text.unwords (map (\c -> "ToolCall:" <> (c ^. toolFunction . functionName)) calls)
+      in 
+        "Assistant: " <> Text.take 200 rendered
+    Nothing    -> "Assistant: " <> Text.take 200 (msg ^. content)
+  Tool      -> "Tool: " <> Text.take 200 (msg ^. content)
 
 sanitizeTitle :: Text -> Maybe Text
 sanitizeTitle raw
