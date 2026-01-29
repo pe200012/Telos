@@ -16,8 +16,15 @@ import           CLI.Context              ( ContextSpec
                                           , validatePathSpec
                                           )
 
-import           Config                   ( Config )
+import           Config                   ( Config
+                                          , addBashAllowCommand
+                                          , bashAllowFromConfig
+                                          , bashPromptOnDenyFromConfig
+                                          , loadConfigFile
+                                          , saveConfig
+                                          )
 
+import           Control.Exception        ( IOException, catch )
 import           Control.Lens             ( (?~), (^.), non )
 
 import           Data.Aeson               ( (.:)
@@ -34,6 +41,7 @@ import           Data.Aeson.Types         ( Parser, parseEither )
 import qualified Data.ByteString.Lazy     as LBS
 import           Data.Char                ( isAlphaNum )
 import qualified Data.Map.Strict          as Map
+import qualified Data.Set                 as Set
 import qualified Data.Text                as Text
 import qualified Data.Text.Encoding       as Text
 import           Data.Time.Clock          ( NominalDiffTime, diffUTCTime, getCurrentTime )
@@ -56,7 +64,7 @@ import           LLM.Http                 ( Role(..)
 
 import           Polysemy                 ( Embed, Members, Sem, embed, runM )
 import           Polysemy.Embed           ( runEmbedded )
-import           Polysemy.Input           ( Input, runInputConst )
+import           Polysemy.Input           ( Input, input, runInputConst )
 import           Polysemy.State           ( State, evalState, get, modify, put, runState )
 
 import           Relude                   hiding ( State
@@ -96,6 +104,8 @@ import           System.Directory         ( XdgDirectory(XdgCache)
                                           , getXdgDirectory
                                           )
 import           System.FilePath          ( (</>) )
+import           System.IO                ( hIsTerminalDevice )
+import qualified System.IO                as SysIO
 
 import           Tool.Execution           ( executeToolCall )
 import           Tool.Registry            ( ToolResult
@@ -133,9 +143,13 @@ runRepl cfg = do
     $ runEmbedded @InputIO @IO (runInputT settings)
     $ runFileSystemLocal scopeRoot
     $ evalState defaultContextSpec
+    $ evalState (initialBashAllow cfg)
     $ evalState currentProject
     $ evalState (mkSnapshotCommit (lastRef ^. non "HEAD"))
     $ loop cfg scopeRoot
+
+initialBashAllow :: Config -> Set.Set Text
+initialBashAllow cfg = Set.fromList ([ "git", "stack", "ls", "pwd" ] <> bashAllowFromConfig cfg)
 
 historyFilePath :: IO FilePath
 historyFilePath = do
@@ -147,6 +161,7 @@ loop :: Members
        '[ State SnapshotCommit
         , State ProjectEntry
         , State ContextSpec
+        , State (Set.Set Text)
         , FileSystem
         , Embed InputIO
         , Embed IO
@@ -158,10 +173,10 @@ loop :: Members
 loop cfg scopeRoot = embed @InputIO (getInputLine "% ") >>= \case
   Nothing -> pure ()
   Just "quit" -> pure ()
-  Just (Text.dropWhile (== ' ') . Text.pack -> input) -> do
-    if Text.isPrefixOf ">" input
+  Just (Text.dropWhile (== ' ') . Text.pack -> lineInput) -> do
+    if Text.isPrefixOf ">" lineInput
       then do
-        let message = Text.stripStart (Text.drop 1 input)
+        let message = Text.stripStart (Text.drop 1 lineInput)
         unless (Text.null message) $ do
           current <- get @SnapshotCommit
           currentProject <- get @ProjectEntry
@@ -192,7 +207,7 @@ loop cfg scopeRoot = embed @InputIO (getInputLine "% ") >>= \case
             maybeGenerateTitle scopeRoot updatedHistory
             pure ()
       else do
-        case parseCommand input of
+        case parseCommand lineInput of
           Left err  -> unless (Text.null err) $ embed @IO $ putStrLn (Text.unpack err)
           Right cmd -> do
             handled <- handleCommand scopeRoot cmd
@@ -299,8 +314,10 @@ handleResponse
     '[ State SnapshotCommit
      , State ProjectEntry
      , State [ Message ]
+     , State (Set.Set Text)
      , FileSystem
      , Input Config
+     , Embed InputIO
      , Embed IO
      ]
     r
@@ -529,8 +546,10 @@ runToolLoop
     '[ State SnapshotCommit
      , State ProjectEntry
      , State [ Message ]
+     , State (Set.Set Text)
      , FileSystem
      , Input Config
+     , Embed InputIO
      , Embed IO
      ]
     r
@@ -547,7 +566,9 @@ runToolLoop scopeRoot toolsAvailable depth calls
       results <- forM calls $ \call -> do
         logToolCallStart call
         started <- embed @IO getCurrentTime
-        result <- executeToolCall scopeRoot call
+        ensureBashPermission call
+        allowed <- get @(Set.Set Text)
+        result <- executeToolCall scopeRoot allowed call
         finished <- embed @IO getCurrentTime
         logToolCallEnd call result (diffUTCTime finished started)
         pure result
@@ -559,6 +580,84 @@ runToolLoop scopeRoot toolsAvailable depth calls
       if null nextCalls
         then unless (Text.null replyText) $ modify (mkMessage Assistant replyText :)
         else runToolLoop scopeRoot toolsAvailable (depth + 1) nextCalls
+
+ensureBashPermission :: Members '[ State (Set.Set Text), Input Config, Embed InputIO, Embed IO ] r
+                     => ToolCall
+                     -> Sem r ()
+ensureBashPermission call = do
+  let name = call ^. toolFunction . functionName
+  when (name == "bash") $ do
+    let cmd = parseBashCommand call
+    case cmd of
+      Nothing      -> pure ()
+      Just bashCmd -> do
+        -- If the command name is invalid (e.g. contains spaces, '/', '&&'),
+        -- do not prompt for allowlist; execution will fail with "Invalid command name.".
+        unless (isValidCommandName bashCmd) $ pure ()
+        when (isValidCommandName bashCmd) $ do
+          allowed <- get @(Set.Set Text)
+          unless (bashCmd `Set.member` allowed) $ do
+            cfg <- input @Config
+            when (bashPromptOnDenyFromConfig cfg) $ do
+              interactive <- embed @IO (hIsTerminalDevice SysIO.stdin)
+              when interactive $ do
+                decision <- promptBashPermission bashCmd
+                case decision of
+                  BashAllowOnce -> modify @(Set.Set Text) (Set.insert bashCmd)
+                  BashAllowPermanently -> do
+                    persisted <- embed @IO (persistBashAllow bashCmd)
+                    modify @(Set.Set Text) (Set.insert bashCmd)
+                    embed @IO
+                      $ putStrLn
+                      $ Text.unpack
+                      $ toolTag
+                      <> " "
+                      <> (if persisted
+                            then okStyle "saved"
+                            else failStyle "not-saved")
+                      <> "  bash allow += "
+                      <> bashCmd
+                  BashDeny -> pure ()
+
+data BashPermission = BashAllowOnce | BashAllowPermanently | BashDeny
+  deriving ( Eq, Show )
+
+promptBashPermission :: Members '[ Embed InputIO, Embed IO ] r => Text -> Sem r BashPermission
+promptBashPermission cmd = do
+  let prompt
+        = Text.unpack (ansiDim <> "bash command not allowed: " <> ansiReset)
+        <> Text.unpack cmd
+        <> "\n"
+        <> "Allow? [a] once / [p] permanent / [d] deny (default): "
+  mLine <- embed @InputIO (getInputLine prompt)
+  let choice = case mLine of
+        Nothing   -> ""
+        Just line -> Text.toLower (Text.strip (Text.pack line))
+  pure $ case Text.uncons choice of
+    Just ( 'a', _ ) -> BashAllowOnce
+    Just ( 'p', _ ) -> BashAllowPermanently
+    _ -> BashDeny
+
+persistBashAllow :: Text -> IO Bool
+persistBashAllow cmd = do
+  loaded <- loadConfigFile
+  case loaded of
+    Left _     -> pure False
+    Right cfg0 -> do
+      let cfg1 = addBashAllowCommand cmd cfg0
+      (saveConfig cfg1 >> pure True) `catch` \(_ :: IOException) -> pure False
+
+parseBashCommand :: ToolCall -> Maybe Text
+parseBashCommand call = do
+  let argsText = call ^. toolFunction . functionArguments
+  v <- rightToMaybe (eitherDecodeStrict' (Text.encodeUtf8 argsText))
+  lookupString "command" v
+
+isValidCommandName :: Text -> Bool
+isValidCommandName
+  cmd = not (Text.null cmd) && Text.all isAllowedChar cmd && not (Text.any (== '/') cmd)
+  where
+    isAllowedChar c = isAlphaNum c || c == '-' || c == '_' || c == '.'
 
 logToolCallStart :: Members '[ Embed IO ] r => ToolCall -> Sem r ()
 logToolCallStart call = embed @IO $ putStrLn (Text.unpack (renderToolStart call))
@@ -629,7 +728,9 @@ isShortOutput t = Text.length t <= 1200 && length (Text.lines t) <= 30
 
 isToolOk :: Text -> Text -> Bool
 isToolOk name out
+  | Text.isPrefixOf "Error in $" out = False
   | Text.isPrefixOf "Invalid arguments" out = False
+  | Text.isPrefixOf "Invalid command name." out = False
   | out == "Unknown tool" = False
   | name == "bash"
     && (out == "Command not allowed."

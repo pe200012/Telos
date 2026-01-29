@@ -127,25 +127,33 @@ toolDefinitions
           , "required" .= [ "path" :: Text, "pattern" :: Text ]
           ]
       }
-    , Tool { _toolName        = "bash"
-           , _toolDescription = "Run an allowed shell command"
-           , _toolParameters  = object
-               [ "type" .= ("object" :: Text)
-               , "properties"
-                 .= object
-                   [ "command"
-                     .= object
-                       [ "type" .= ("string" :: Text), "description" .= ("Command name" :: Text) ]
-                   , "args"
-                     .= object
-                       [ "type" .= ("array" :: Text)
-                       , "items" .= object [ "type" .= ("string" :: Text) ]
-                       , "description" .= ("Command arguments" :: Text)
-                       ]
-                   ]
-               , "required" .= [ "command" :: Text ]
-               ]
-           }
+    , Tool
+      { _toolName        = "bash"
+      , _toolDescription
+          = "Run an allowed command. Use `command` as the executable name only, and put flags/paths in `args`. For multiple commands/pipes, use command=\"bash\" with args=[\"-lc\",\"...\"] (requires permission)."
+      , _toolParameters  = object
+          [ "type" .= ("object" :: Text)
+          , "properties"
+            .= object
+              [ "command"
+                .= object
+                  [ "type" .= ("string" :: Text)
+                  , "description"
+                    .= ("Executable name only (e.g. 'mkdir', 'ls', 'git', 'stack'). Must NOT contain spaces or '/'"
+                          :: Text)
+                  ]
+              , "args"
+                .= object
+                  [ "type" .= ("array" :: Text)
+                  , "items" .= object [ "type" .= ("string" :: Text) ]
+                  , "description"
+                    .= ("Arguments array. Example: {command:'mkdir', args:['-p','./test-llm']}"
+                          :: Text)
+                  ]
+              ]
+          , "required" .= [ "command" :: Text ]
+          ]
+      }
     , Tool { _toolName        = "apply_patch"
            , _toolDescription = "Apply a unified diff patch"
            , _toolParameters  = object
@@ -173,4 +181,8 @@ renderInventory tools
           ]
     in 
       Text.unlines
-        ([ "You can call tools using <toolcall>{...}</toolcall>." ] <> map renderTool tools)
+        ([ "You can call tools using <toolcall>{...}</toolcall>."
+         , "Example bash: <toolcall>{\"name\":\"bash\",\"arguments\":{\"command\":\"ls\",\"args\":[\"-la\",\"./test-llm\"]}}</toolcall>"
+         , "Example bash -lc: <toolcall>{\"name\":\"bash\",\"arguments\":{\"command\":\"bash\",\"args\":[\"-lc\",\"cd ./test-llm && ls -la\"]}}</toolcall>"
+         ]
+         <> map renderTool tools)

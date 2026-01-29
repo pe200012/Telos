@@ -28,7 +28,7 @@ import           Config                   ( Config
                                           , Provider(..)
                                           )
 
-import           Control.Exception        ( SomeException, try )
+import           Control.Exception        ( try )
 import           Control.Lens             ( (.~), (^.), (^?), view )
 import           Control.Lens.TH          ( makeFieldsNoPrefix )
 

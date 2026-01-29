@@ -8,12 +8,15 @@ import           Control.Exception  ( IOException, catch )
 import           Control.Lens       ( (^.), non )
 
 import           Data.Aeson         ( (.:)
+                                    , (.:?)
                                     , FromJSON(parseJSON)
                                     , Value
                                     , eitherDecodeStrict'
                                     , withObject
                                     )
 import           Data.Aeson.Types   ( parseEither )
+import           Data.Char          ( isAlphaNum )
+import qualified Data.Set           as Set
 import qualified Data.Text          as Text
 import           Data.Text.Encoding ( encodeUtf8 )
 
@@ -23,8 +26,9 @@ import           Polysemy           ( Embed, Members, Sem, embed )
 
 import           Relude             hiding ( encodeUtf8 )
 
+import           System.Exit        ( ExitCode(..) )
 import           System.FilePath    ( makeRelative )
-import           System.Process     ( readProcess )
+import           System.Process     ( readProcessWithExitCode )
 
 import           Tool.Registry      ( ToolResult, findTool, mkToolResult )
 
@@ -67,13 +71,17 @@ instance FromJSON GrepArgs where
   parseJSON = withObject "GrepArgs" $ \obj -> GrepArgs <$> obj .: "path" <*> obj .: "pattern"
 
 instance FromJSON BashArgs where
-  parseJSON = withObject "BashArgs" $ \obj -> BashArgs <$> obj .: "command" <*> obj .: "args"
+  parseJSON = withObject "BashArgs" $ \obj -> BashArgs <$> obj .: "command" <*> obj .:? "args"
 
 instance FromJSON ApplyPatchArgs where
   parseJSON = withObject "ApplyPatchArgs" $ \obj -> ApplyPatchArgs <$> obj .: "patch"
 
-executeToolCall :: Members '[ FileSystem, Embed IO ] r => FilePath -> ToolCall -> Sem r ToolResult
-executeToolCall scopeRoot call = do
+executeToolCall :: Members '[ FileSystem, Embed IO ] r
+                => FilePath
+                -> Set.Set Text
+                -> ToolCall
+                -> Sem r ToolResult
+executeToolCall scopeRoot allowedBashCommands call = do
   let name   = call ^. toolFunction . functionName
       callId = call ^. toolCallId
   case findTool name of
@@ -83,11 +91,16 @@ executeToolCall scopeRoot call = do
       case eitherDecodeStrict' (encodeUtf8 argsText) of
         Left err    -> pure
           (mkToolResult callId name ("Invalid arguments JSON: " <> Text.pack err))
-        Right value -> runTool scopeRoot name callId value
+        Right value -> runTool scopeRoot allowedBashCommands name callId value
 
-runTool
-  :: Members '[ FileSystem, Embed IO ] r => FilePath -> Text -> Text -> Value -> Sem r ToolResult
-runTool scopeRoot name callId value
+runTool :: Members '[ FileSystem, Embed IO ] r
+        => FilePath
+        -> Set.Set Text
+        -> Text
+        -> Text
+        -> Value
+        -> Sem r ToolResult
+runTool scopeRoot allowedBashCommands name callId value
   | name == "list_files" = do
     parseResult <- parseArgs @ListFilesArgs value
     case parseResult of
@@ -129,7 +142,7 @@ runTool scopeRoot name callId value
     case parseResult of
       Left err   -> pure (mkToolResult callId name err)
       Right args -> do
-        result <- embed @IO $ runBash args
+        result <- embed @IO $ runBash allowedBashCommands args
         pure (mkToolResult callId name result)
   | name == "apply_patch" = do
     parseResult <- parseArgs @ApplyPatchArgs value
@@ -149,21 +162,39 @@ parseArgs value = case parseEither parseJSON value of
   Left err  -> pure (Left (Text.pack err))
   Right val -> pure (Right val)
 
-runBash :: BashArgs -> IO Text
-runBash bashSpec = do
+runBash :: Set.Set Text -> BashArgs -> IO Text
+runBash allowed bashSpec = do
   let cmd = bashCommand bashSpec
-  if cmd `elem` allowedCommands
-    then do
-      let argv = maybe [] (map Text.unpack) (bashArgs bashSpec)
-      (Text.pack <$> readProcess (Text.unpack cmd) argv "") `catch` \(e :: IOException) -> pure
-        (Text.pack (displayException e))
-    else pure "Command not allowed."
+  if not (isValidCommandName cmd)
+    then pure
+      "Invalid command name. Use {\"command\":\"mkdir\",\"args\":[\"-p\",\"./test-llm\"]}. For multiple commands/pipes: {\"command\":\"bash\",\"args\":[\"-lc\",\"cd ./test-llm && ls -la\"]}."
+    else if cmd `Set.member` allowed
+      then do
+        let argv = maybe [] (map Text.unpack) (bashArgs bashSpec)
+        (do
+           ( exitCode, out, err ) <- readProcessWithExitCode (Text.unpack cmd) argv ""
+           let combined = Text.pack (out <> err)
+           pure $ case exitCode of
+             ExitSuccess   -> combined
+             ExitFailure n -> "ExitFailure " <> Text.pack (show n) <> "\n" <> combined)
+          `catch` \(e :: IOException) -> pure (Text.pack (displayException e))
+      else pure "Command not allowed."
 
-allowedCommands :: [ Text ]
-allowedCommands = [ "git", "stack", "ls" ]
+isValidCommandName :: Text -> Bool
+isValidCommandName
+  cmd = not (Text.null cmd) && Text.all isAllowedChar cmd && not (Text.any (== '/') cmd)
+  where
+    isAllowedChar c = isAlphaNum c || c == '-' || c == '_' || c == '.'
 
 runApplyPatch :: FilePath -> Text -> IO (Either Text Text)
 runApplyPatch scopeRoot patch
-  = (Right . Text.pack
-     <$> readProcess "git" [ "-C", scopeRoot, "apply", "--whitespace=nowarn" ] (Text.unpack patch))
+  = (do
+       ( exitCode, out, err ) <- readProcessWithExitCode
+         "git"
+         [ "-C", scopeRoot, "apply", "--whitespace=nowarn" ]
+         (Text.unpack patch)
+       let combined = Text.pack (out <> err)
+       pure $ case exitCode of
+         ExitSuccess   -> Right combined
+         ExitFailure n -> Left ("ExitFailure " <> Text.pack (show n) <> "\n" <> combined))
   `catch` \(e :: IOException) -> pure (Left (Text.pack (displayException e)))
