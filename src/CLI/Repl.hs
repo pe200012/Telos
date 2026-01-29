@@ -79,6 +79,7 @@ import           Relude                   hiding ( State
 
 import           Snapshot.Git             ( ProjectEntry
                                           , createProject
+                                          , currentSessionName
                                           , entryLastSession
                                           , lastSessionHash
                                           , listProjects
@@ -87,6 +88,7 @@ import           Snapshot.Git             ( ProjectEntry
                                           , projectPath
                                           , renameProject
                                           , runSnapshotGit
+                                          , setCurrentSessionName
                                           , setLastSessionHash
                                           )
 
@@ -294,6 +296,7 @@ handleCommand scopeRoot command = case command of
   CmdCheckout hash -> do
     project <- get @ProjectEntry
     put @SnapshotCommit (mkSnapshotCommit hash)
+    embed @IO $ setCurrentSessionName scopeRoot (project ^. projectName)
     embed @IO $ setLastSessionHash scopeRoot (project ^. projectName) hash
     put @ProjectEntry (project & entryLastSession ?~ hash)
     embed @IO $ putStrLn ("Checked out: " <> Text.unpack hash)
@@ -392,6 +395,7 @@ switchProject :: Members '[ State SnapshotCommit, State ProjectEntry, Embed IO ]
               -> Sem r ()
 switchProject rootPath entry = do
   lastRef <- embed @IO $ lastSessionHash rootPath (entry ^. projectName)
+  embed @IO $ setCurrentSessionName rootPath (entry ^. projectName)
   put @ProjectEntry entry
   put @SnapshotCommit (mkSnapshotCommit (lastRef ^. non "HEAD"))
   embed @IO $ putStrLn ("Switched session: " <> Text.unpack (entry ^. projectName))
@@ -401,14 +405,17 @@ initCurrentProject scopeRoot = do
   entries <- listProjects scopeRoot
   let cwdText  = Text.pack scopeRoot
       samePath = filter (\entry -> entry ^. projectPath == cwdText) entries
-  case preferNamed samePath of
+  mCurrent <- currentSessionName scopeRoot
+  case mCurrent >>= (\name -> find (\entry -> entry ^. projectName == name) samePath) of
     Just entry -> pure entry
-    Nothing    -> do
-      let placeholder = nextPlaceholderName (map (^. projectName) entries)
-      created <- createProject scopeRoot placeholder scopeRoot
-      case created of
-        Left err    -> error err
-        Right entry -> pure entry
+    Nothing    -> case preferNamed samePath of
+      Just entry -> pure entry
+      Nothing    -> do
+        let placeholder = nextPlaceholderName (map (^. projectName) entries)
+        created <- createProject scopeRoot placeholder scopeRoot
+        case created of
+          Left err    -> error err
+          Right entry -> pure entry
 
 preferNamed :: [ ProjectEntry ] -> Maybe ProjectEntry
 preferNamed entries = case filter (not . isPlaceholderName . (^. projectName)) entries of

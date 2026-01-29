@@ -17,6 +17,7 @@ module Snapshot.Git
   , HasPath(..)
   , HasLastSession(..)
   , HasProjects(..)
+  , HasCurrentSession(..)
   , runSnapshotGit
   , snapshotRepoPath
   , latestSnapshotHash
@@ -25,6 +26,8 @@ module Snapshot.Git
   , lastSessionHash
   , createProject
   , renameProject
+  , currentSessionName
+  , setCurrentSessionName
   , setLastSessionHash
   , newProjectMeta
   , newProjectIndex
@@ -78,7 +81,8 @@ import           Types.Chat              ( Message )
 data ProjectMeta = ProjectMeta { _uuid :: Text, _path :: Text, _lastSession :: Maybe Text }
   deriving ( Eq, Show, Generic )
 
-newtype ProjectIndex = ProjectIndex { _projects :: Map Text ProjectMeta }
+data ProjectIndex
+  = ProjectIndex { _projects :: Map Text ProjectMeta, _currentSession :: Maybe Text }
   deriving ( Eq, Show, Generic )
 
 data ProjectEntry
@@ -95,10 +99,10 @@ newProjectMeta :: Text -> Text -> Maybe Text -> ProjectMeta
 newProjectMeta = ProjectMeta
 
 newProjectIndex :: Map Text ProjectMeta -> ProjectIndex
-newProjectIndex = ProjectIndex
+newProjectIndex m = ProjectIndex m Nothing
 
 defaultProjectIndex :: ProjectIndex
-defaultProjectIndex = ProjectIndex Map.empty
+defaultProjectIndex = ProjectIndex Map.empty Nothing
 
 newProjectEntry :: Text -> Text -> Maybe Text -> ProjectEntry
 newProjectEntry = ProjectEntry
@@ -210,7 +214,13 @@ renameProject scopeRoot oldName newName = do
     else case Map.lookup oldName (idx ^. projects) of
       Nothing   -> pure (Left "Project name not found.")
       Just meta -> do
-        let idx' = idx & projects %~ (Map.insert newName meta . Map.delete oldName)
+        let idx'
+              = idx
+              & projects %~ (Map.insert newName meta . Map.delete oldName)
+              & currentSession %~ (\case
+                                     Just cur
+                                       | cur == oldName -> Just newName
+                                     other    -> other)
         saveIndex scopeRoot idx'
         pure (Right (newProjectEntry newName (meta ^. path) (meta ^. lastSession)))
 
@@ -235,7 +245,16 @@ updateLastSession scopeRoot projName = do
     Right out -> do
       let commitHash = Text.pack (takeWhile (/= '\n') out)
       setLastSessionHash scopeRoot projName commitHash
+      setCurrentSessionName scopeRoot projName
       pure (mkSnapshotCommit commitHash)
+
+currentSessionName :: FilePath -> IO (Maybe Text)
+currentSessionName scopeRoot = (^. currentSession) <$> loadIndex scopeRoot
+
+setCurrentSessionName :: FilePath -> Text -> IO ()
+setCurrentSessionName scopeRoot name = do
+  idx <- loadIndex scopeRoot
+  saveIndex scopeRoot (idx & currentSession ?~ name)
 
 lastSessionHash :: FilePath -> Text -> IO (Maybe Text)
 lastSessionHash scopeRoot projName = do

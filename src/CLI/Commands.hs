@@ -68,7 +68,9 @@ sessionParser
      <> command "new" (info sessionNewParser (progDesc "Create a new session")))
 
 sessionUseParser :: Parser Command
-sessionUseParser = CmdSessionUse <$> argument textArgument (metavar "NAME")
+sessionUseParser
+  = CmdSessionUse . stripSurroundingQuotes . Text.unwords
+  <$> some (argument textArgument (metavar "NAME..."))
 
 sessionNewParser :: Parser Command
 sessionNewParser
@@ -93,6 +95,13 @@ helpParser = CmdHelp <$> optional (argument textArgument (metavar "COMMAND"))
 
 textArgument :: ReadM Text
 textArgument = Text.pack <$> str
+
+stripSurroundingQuotes :: Text -> Text
+stripSurroundingQuotes t
+  | Text.length t >= 2 && Text.head t == '\'' && Text.last t == '\''
+    = Text.drop 1 (Text.dropEnd 1 t)
+  | Text.length t >= 2 && Text.head t == '"' && Text.last t == '"' = Text.drop 1 (Text.dropEnd 1 t)
+  | otherwise = t
 
 replName :: String
 replName = "repl"
