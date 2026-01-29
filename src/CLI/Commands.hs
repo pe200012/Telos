@@ -9,13 +9,12 @@ import           Options.Applicative
 import           Relude
 
 data Command
-  = CmdSnapshot
-  | CmdSnapshots
+  = CmdLogs
   | CmdHistory
-  | CmdProjects
-  | CmdProjectUse Text
-  | CmdProjectNew (Maybe Text) (Maybe Text)
-  | CmdRestore Text
+  | CmdSessionList
+  | CmdSessionUse Text
+  | CmdSessionNew (Maybe Text) (Maybe Text)
+  | CmdCheckout Text
   | CmdContextAdd Text
   | CmdContextShow
   | CmdContextClear
@@ -54,31 +53,30 @@ commandInfo
 commandParser :: Parser Command
 commandParser
   = hsubparser
-    (command "snapshot" (info (pure CmdSnapshot) (progDesc "Show latest snapshot hash"))
-     <> command "snapshots" (info (pure CmdSnapshots) (progDesc "List snapshot commits"))
+    (command "logs" (info (pure CmdLogs) (progDesc "List snapshot commits"))
      <> command "history" (info (pure CmdHistory) (progDesc "Show chat history"))
-     <> command "projects" (info (pure CmdProjects) (progDesc "List projects"))
-     <> command "project" (info projectParser (progDesc "Project commands"))
-     <> command "restore" (info restoreParser (progDesc "Restore snapshot by hash"))
+     <> command "session" (info sessionParser (progDesc "Session commands"))
+     <> command "checkout" (info checkoutParser (progDesc "Checkout snapshot by hash"))
      <> command "context" (info contextParser (progDesc "Context commands"))
      <> command "help" (info helpParser (progDesc "Show help")))
 
-projectParser :: Parser Command
-projectParser
+sessionParser :: Parser Command
+sessionParser
   = hsubparser
-    (command "use" (info projectUseParser (progDesc "Switch project by name"))
-     <> command "new" (info projectNewParser (progDesc "Create a new project")))
+    (command "list" (info (pure CmdSessionList) (progDesc "List sessions"))
+     <> command "use" (info sessionUseParser (progDesc "Switch session by name"))
+     <> command "new" (info sessionNewParser (progDesc "Create a new session")))
 
-projectUseParser :: Parser Command
-projectUseParser = CmdProjectUse <$> argument textArgument (metavar "NAME")
+sessionUseParser :: Parser Command
+sessionUseParser = CmdSessionUse <$> argument textArgument (metavar "NAME")
 
-projectNewParser :: Parser Command
-projectNewParser
-  = CmdProjectNew <$> optional (argument textArgument (metavar "NAME"))
+sessionNewParser :: Parser Command
+sessionNewParser
+  = CmdSessionNew <$> optional (argument textArgument (metavar "NAME"))
   <*> optional (argument textArgument (metavar "PATH"))
 
-restoreParser :: Parser Command
-restoreParser = CmdRestore <$> argument textArgument (metavar "HASH")
+checkoutParser :: Parser Command
+checkoutParser = CmdCheckout <$> argument textArgument (metavar "HASH")
 
 contextParser :: Parser Command
 contextParser

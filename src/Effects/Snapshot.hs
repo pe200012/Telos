@@ -32,7 +32,7 @@ mkSnapshotCommit :: Text -> SnapshotCommit
 mkSnapshotCommit = SnapshotCommit
 
 data Snapshot m a where
-  SaveSnapshot :: ChatHistory -> Snapshot m ()
+  SaveSnapshot :: ChatHistory -> Snapshot m SnapshotCommit
   LoadSnapshot :: SnapshotCommit -> Snapshot m (Maybe ChatHistory)
 
 makeSem ''Snapshot

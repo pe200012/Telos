@@ -81,7 +81,6 @@ import           Snapshot.Git             ( ProjectEntry
                                           , createProject
                                           , entryLastSession
                                           , lastSessionHash
-                                          , latestSnapshotHash
                                           , listProjects
                                           , listSnapshots
                                           , projectName
@@ -202,7 +201,8 @@ loop cfg scopeRoot = embed @InputIO (getInputLine "% ") >>= \case
                 response <- runLLMHttpWithTools toolsAvailable $ askLLM userMsg
                 handleResponse scopeRoot toolsAvailable response
               let savedHistory = stripTransient updatedHistory
-              saveSnapshot savedHistory
+              newCommit <- saveSnapshot savedHistory
+              put @SnapshotCommit newCommit
               pure ( savedHistory, () )
             maybeGenerateTitle scopeRoot updatedHistory
             pure ()
@@ -220,18 +220,11 @@ handleCommand
   -> Command
   -> Sem r Bool
 handleCommand scopeRoot command = case command of
-  CmdSnapshot -> do
-    project <- get @ProjectEntry
-    mHash <- embed @IO $ latestSnapshotHash scopeRoot (project ^. projectName)
-    case mHash of
-      Nothing -> embed @IO $ putStrLn "No snapshots yet."
-      Just h  -> embed @IO $ putStrLn (Text.unpack h)
-    pure True
-  CmdSnapshots -> do
+  CmdLogs -> do
     project <- get @ProjectEntry
     entries <- embed @IO $ listSnapshots scopeRoot (project ^. projectName)
     if null entries
-      then embed @IO $ putStrLn "No snapshots yet."
+      then embed @IO $ putStrLn "No logs yet."
       else embed @IO $ mapM_ (putStrLn . Text.unpack) entries
     pure True
   CmdHistory -> do
@@ -244,10 +237,10 @@ handleCommand scopeRoot command = case command of
         then embed @IO $ putStrLn "No history yet."
         else embed @IO $ mapM_ (putStrLn . renderMessage) (reverse messages)
     pure True
-  CmdProjects -> do
+  CmdSessionList -> do
     entries <- embed @IO $ listProjects scopeRoot
     if null entries
-      then embed @IO $ putStrLn "No projects yet."
+      then embed @IO $ putStrLn "No sessions yet."
       else do
         let grouped
               = Map.fromListWith (<>) [ ( entry ^. projectPath, [ entry ] ) | entry <- entries ]
@@ -285,25 +278,25 @@ handleCommand scopeRoot command = case command of
         modify @ContextSpec (addContextPath path)
         embed @IO $ putStrLn ("Context added: " <> path)
     pure True
-  CmdProjectUse name -> do
+  CmdSessionUse name -> do
     entries <- embed @IO $ listProjects scopeRoot
     let scopeText = Text.pack scopeRoot
     case find (\entry -> entry ^. projectName == name) entries of
-      Nothing    -> embed @IO $ putStrLn "Unknown project name."
+      Nothing    -> embed @IO $ putStrLn "Unknown session name."
       Just entry -> if isRelated scopeText (entry ^. projectPath)
         then switchProject scopeRoot entry
-        else embed @IO $ putStrLn "Project is not in the current folder."
+        else embed @IO $ putStrLn "Session is not in the current folder."
     pure True
-  CmdProjectNew mName mPath -> do
+  CmdSessionNew mName mPath -> do
     let ( nameArg, pathArg ) = normalizeProjectNewArgs mName mPath
     createOrSwitch scopeRoot nameArg pathArg
     pure True
-  CmdRestore hash -> do
+  CmdCheckout hash -> do
     project <- get @ProjectEntry
     put @SnapshotCommit (mkSnapshotCommit hash)
     embed @IO $ setLastSessionHash scopeRoot (project ^. projectName) hash
     put @ProjectEntry (project & entryLastSession ?~ hash)
-    embed @IO $ putStrLn ("Restored snapshot: " <> Text.unpack hash)
+    embed @IO $ putStrLn ("Checked out: " <> Text.unpack hash)
     pure True
   CmdHelp mCommand -> do
     embed @IO $ putStrLn (Text.unpack (renderHelp mCommand))
@@ -401,7 +394,7 @@ switchProject rootPath entry = do
   lastRef <- embed @IO $ lastSessionHash rootPath (entry ^. projectName)
   put @ProjectEntry entry
   put @SnapshotCommit (mkSnapshotCommit (lastRef ^. non "HEAD"))
-  embed @IO $ putStrLn ("Switched project: " <> Text.unpack (entry ^. projectName))
+  embed @IO $ putStrLn ("Switched session: " <> Text.unpack (entry ^. projectName))
 
 initCurrentProject :: FilePath -> IO ProjectEntry
 initCurrentProject scopeRoot = do

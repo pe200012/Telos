@@ -54,7 +54,11 @@ import qualified Data.Map.Strict         as Map
 import qualified Data.Text               as Text
 import           Data.Time.Clock         ( getCurrentTime )
 
-import           Effects.Snapshot        ( HasUnSnapshotCommit(..), Snapshot(..) )
+import           Effects.Snapshot        ( HasUnSnapshotCommit(..)
+                                         , Snapshot(..)
+                                         , SnapshotCommit
+                                         , mkSnapshotCommit
+                                         )
 
 import           Polysemy                ( Embed, Member, Sem, embed, interpret )
 
@@ -122,7 +126,7 @@ snapshotRepoPath scopeRoot projName = do
   meta <- getProjectMeta scopeRoot projName
   pure (cacheRoot </> "telos" </> "snapshots" </> Text.unpack (meta ^. uuid))
 
-saveSnapshotGit :: FilePath -> Text -> [ Message ] -> IO ()
+saveSnapshotGit :: FilePath -> Text -> [ Message ] -> IO SnapshotCommit
 saveSnapshotGit scopeRoot projName history = do
   repo <- snapshotRepoPath scopeRoot projName
   ensureGitRepo repo
@@ -222,15 +226,16 @@ getProjectMeta scopeRoot projName = do
     Nothing   -> throwIO (userError ("Unknown project name: " <> Text.unpack projName))
     Just meta -> pure meta
 
-updateLastSession :: FilePath -> Text -> IO ()
+updateLastSession :: FilePath -> Text -> IO SnapshotCommit
 updateLastSession scopeRoot projName = do
   repo <- snapshotRepoPath scopeRoot projName
   result <- gitMaybe repo [ "rev-parse", "HEAD" ]
   case result of
-    Left _    -> pure ()
+    Left _    -> pure (mkSnapshotCommit "HEAD")
     Right out -> do
       let commitHash = Text.pack (takeWhile (/= '\n') out)
       setLastSessionHash scopeRoot projName commitHash
+      pure (mkSnapshotCommit commitHash)
 
 lastSessionHash :: FilePath -> Text -> IO (Maybe Text)
 lastSessionHash scopeRoot projName = do
