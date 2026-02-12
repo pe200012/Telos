@@ -91,7 +91,7 @@ library
     , tomland
   default-language: GHC2021
 
-executable Telos-exe
+executable telos
   main-is: Main.hs
   other-modules:
       Paths_Telos

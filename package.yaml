@@ -78,7 +78,7 @@ library:
   source-dirs: src
 
 executables:
-  Telos-exe:
+  telos:
     main: Main.hs
     source-dirs: app
     ghc-options:
