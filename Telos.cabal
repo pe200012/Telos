@@ -36,6 +36,8 @@ library
       LLM.Http
       Markdown.RenderAnsi
       Markdown.Stream
+      Provider.Lua
+      Provider.Spec
       Snapshot.Git
       Tool.Execution
       Tool.Registry

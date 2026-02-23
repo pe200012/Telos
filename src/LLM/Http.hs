@@ -1,10 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators #-}
 
 module LLM.Http
@@ -24,15 +22,15 @@ import           Config                   ( Config
                                           , HasBaseUrl(..)
                                           , HasModel(..)
                                           , HasProvider(..)
+                                          , HasProviderSpec(..)
                                           , HasTemperature(..)
-                                          , Provider(..)
                                           )
 
 import           Control.Exception        ( try )
 import           Control.Lens             ( (.~), (^.), (^?), view )
-import           Control.Lens.TH          ( makeFieldsNoPrefix )
 
-import           Data.Aeson               ( Options
+import           Data.Aeson               ( (.=)
+                                          , Options
                                           , Result(..)
                                           , ToJSON(toJSON)
                                           , Value
@@ -41,6 +39,7 @@ import           Data.Aeson               ( Options
                                           , fieldLabelModifier
                                           , fromJSON
                                           , genericToJSON
+                                          , object
                                           , omitNothingFields
                                           )
 import           Data.Aeson.Lens          ( _String, key, nth )
@@ -78,6 +77,9 @@ import           Network.HTTP.Simple      ( getResponseBody
 import           Polysemy                 ( Embed, Members, Sem, embed, interpret )
 import           Polysemy.Input           ( Input, input )
 import           Polysemy.State           ( State, get )
+
+import           Provider.Lua             ( buildRequestBody )
+import qualified Provider.Spec            as ProviderSpec
 
 import           Relude                   hiding ( State, get, hFlush, stdout )
 
@@ -119,8 +121,6 @@ defaultChatRequest
                 , _toolChoice  = Nothing
                 }
 
-makeFieldsNoPrefix ''ChatRequest
-
 runLLMHttp
   :: Members '[ Embed IO, Input Config, State [ Message ] ] r => Sem (LLM ': r) a -> Sem r a
 runLLMHttp = runLLMHttpWithTools Nothing
@@ -141,22 +141,34 @@ runLLMHttpWithTools toolSpecs = interpret $ \case
           = if null history
             then [ msg ]
             else reverse history
-        payload
-          = defaultChatRequest
-          & model .~ view model cfg
-          & messages .~ messagesToSend
-          & temperature .~ view temperature cfg
-          & stream .~ True
-          & tools .~ toolSpecs
-          & toolChoice .~ toolChoiceValue cfg toolSpecs
-    req0 <- embed @IO $ parseRequest (Text.unpack (view baseUrl cfg))
-    let req
-          = setRequestMethod "POST"
-          $ setRequestHeader "Authorization" [ "Bearer " <> encodeUtf8 (view apiKey cfg) ]
-          $ setRequestHeader "Content-Type" [ "application/json" ]
-          $ setRequestHeader "Accept" [ "text/event-stream" ]
-          $ setRequestBodyJSON payload req0
-    embed @IO $ streamResponse req
+        ctx
+          = object
+            ([ "provider" .= view provider cfg
+             , "base_url" .= view baseUrl cfg
+             , "model" .= view model cfg
+             , "messages" .= messagesToSend
+             , "temperature" .= view temperature cfg
+             , "stream" .= True
+             ]
+             <> catMaybes
+               [ ("tools" .=) <$> toolSpecs, ("tool_choice" .=) <$> toolChoiceValue cfg toolSpecs ])
+    bodyResult <- embed @IO $ buildRequestBody (view provider cfg) ctx
+    case bodyResult of
+      Left err   -> do
+        let message = "[provider error: " <> Text.pack (show err) <> "]"
+        embed @IO $ TIO.putStrLn message
+        pure (defaultLLMResponse & responseText .~ message)
+      Right body -> do
+        req0 <- embed @IO $ parseRequest (Text.unpack (view baseUrl cfg))
+        let req
+              = setRequestMethod "POST"
+              $ setRequestHeader
+                (fromString (Text.unpack (cfg ^. providerSpec . ProviderSpec.authHeader)))
+                [ encodeUtf8 (cfg ^. providerSpec . ProviderSpec.authPrefix <> view apiKey cfg) ]
+              $ setRequestHeader "Content-Type" [ "application/json" ]
+              $ setRequestHeader "Accept" [ "text/event-stream" ]
+              $ setRequestBodyJSON body req0
+        embed @IO $ streamResponse req
 
 runLLMHttpSilentWithTools :: Members '[ Embed IO, Input Config, State [ Message ] ] r
                           => Maybe [ ToolSpec ]
@@ -170,22 +182,33 @@ runLLMHttpSilentWithTools toolSpecs = interpret $ \case
           = if null history
             then [ msg ]
             else reverse history
-        payload
-          = defaultChatRequest
-          & model .~ view model cfg
-          & messages .~ messagesToSend
-          & temperature .~ view temperature cfg
-          & stream .~ True
-          & tools .~ toolSpecs
-          & toolChoice .~ toolChoiceValue cfg toolSpecs
-    req0 <- embed @IO $ parseRequest (Text.unpack (view baseUrl cfg))
-    let req
-          = setRequestMethod "POST"
-          $ setRequestHeader "Authorization" [ "Bearer " <> encodeUtf8 (view apiKey cfg) ]
-          $ setRequestHeader "Content-Type" [ "application/json" ]
-          $ setRequestHeader "Accept" [ "text/event-stream" ]
-          $ setRequestBodyJSON payload req0
-    embed @IO $ streamResponseSilent req
+        ctx
+          = object
+            ([ "provider" .= view provider cfg
+             , "base_url" .= view baseUrl cfg
+             , "model" .= view model cfg
+             , "messages" .= messagesToSend
+             , "temperature" .= view temperature cfg
+             , "stream" .= True
+             ]
+             <> catMaybes
+               [ ("tools" .=) <$> toolSpecs, ("tool_choice" .=) <$> toolChoiceValue cfg toolSpecs ])
+    bodyResult <- embed @IO $ buildRequestBody (view provider cfg) ctx
+    case bodyResult of
+      Left err   -> do
+        let message = "[provider error: " <> Text.pack (show err) <> "]"
+        pure (defaultLLMResponse & responseText .~ message)
+      Right body -> do
+        req0 <- embed @IO $ parseRequest (Text.unpack (view baseUrl cfg))
+        let req
+              = setRequestMethod "POST"
+              $ setRequestHeader
+                (fromString (Text.unpack (cfg ^. providerSpec . ProviderSpec.authHeader)))
+                [ encodeUtf8 (cfg ^. providerSpec . ProviderSpec.authPrefix <> view apiKey cfg) ]
+              $ setRequestHeader "Content-Type" [ "application/json" ]
+              $ setRequestHeader "Accept" [ "text/event-stream" ]
+              $ setRequestBodyJSON body req0
+        embed @IO $ streamResponseSilent req
 
 streamResponse :: HTTP.Request -> IO LLMResponse
 streamResponse req = do
@@ -283,9 +306,7 @@ mergeToolCalls calls = Map.elems $ foldl' insertCall Map.empty calls
           older & toolFunction .~ mergedFunc
 
 supportsToolCalls :: Config -> Bool
-supportsToolCalls cfg = case cfg ^. provider of
-  ZhipuAI -> True
-  OpenAI  -> True
+supportsToolCalls cfg = cfg ^. providerSpec . ProviderSpec.supportsToolCalls
 
 toolChoiceValue :: Config -> Maybe [ ToolSpec ] -> Maybe Text
 toolChoiceValue cfg toolSpecs
